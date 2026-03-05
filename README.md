@@ -492,7 +492,6 @@ python3 <TRITON_OPENAI_MAIN> \
   [--enable-kserve-frontends]                                # when HTTP or gRPC enabled
   [--kserve-http-port=<TRITON_HTTP_PORT>]                    # with kserve frontends
   [--kserve-grpc-port=<TRITON_GRPC_PORT>]                    # with kserve frontends
-  [--backend-config=<spec> ...]                              # for each entry in TRITON_BACKEND_CONFIG
   [extra args...]                                            # anything after --
 ```
 
@@ -506,7 +505,6 @@ python3 <TRITON_OPENAI_MAIN> \
 | `TRITON_ALLOW_HTTP` / `TRITON_ALLOW_GRPC` | `--enable-kserve-frontends` | When either is truthy |
 | `TRITON_HTTP_PORT` | `--kserve-http-port` | With kserve frontends |
 | `TRITON_GRPC_PORT` | `--kserve-grpc-port` | With kserve frontends |
-| `TRITON_BACKEND_CONFIG` | `--backend-config` | When set (one flag per entry) |
 
 When `--enable-kserve-frontends` is passed, the OpenAI frontend also serves KServe HTTP and gRPC, so all three interfaces (OpenAI port 9000, KServe HTTP port 8000, KServe gRPC port 8001) run from a single process.
 

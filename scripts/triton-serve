@@ -223,15 +223,6 @@ if lib::is_truthy "$TRITON_OPENAI_FRONTEND"; then
     cmd+=(--kserve-grpc-port="$TRITON_GRPC_PORT")
   fi
 
-  # Backend configs
-  if [[ -n "$TRITON_BACKEND_CONFIG" ]]; then
-    IFS=',' read -ra _bc_parts <<< "$TRITON_BACKEND_CONFIG"
-    for _bc in "${_bc_parts[@]}"; do
-      _bc="${_bc#"${_bc%%[![:space:]]*}"}"
-      _bc="${_bc%"${_bc##*[![:space:]]}"}"
-      [[ -n "$_bc" ]] && cmd+=(--backend-config="$_bc")
-    done
-  fi
 else
   # --- Standard tritonserver mode ---
   cmd=(

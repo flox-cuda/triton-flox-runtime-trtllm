@@ -3,6 +3,9 @@
   "manifest": {
     "version": 1,
     "install": {
+      "bats": {
+        "pkg-path": "bats"
+      },
       "shellcheck": {
         "pkg-path": "shellcheck"
       }
@@ -12,6 +15,122 @@
     "options": {}
   },
   "packages": [
+    {
+      "attr_path": "bats",
+      "broken": false,
+      "derivation": "/nix/store/f1c2vb6vmq2nw5hdq44gs2bbjggv15r3-bats-1.12.0.drv",
+      "description": "Bash Automated Testing System",
+      "install_id": "bats",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "name": "bats-1.12.0",
+      "pname": "bats",
+      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "rev_count": 957538,
+      "rev_date": "2026-03-03T12:59:14Z",
+      "scrape_date": "2026-03-04T04:39:37.004627Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/59d9drafwif4gz2n7myvsky1igp1x3pn-bats-1.12.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bats",
+      "broken": false,
+      "derivation": "/nix/store/pk6jhzndqv547vy5j40mfjxfxsdf8qjz-bats-1.12.0.drv",
+      "description": "Bash Automated Testing System",
+      "install_id": "bats",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "name": "bats-1.12.0",
+      "pname": "bats",
+      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "rev_count": 957538,
+      "rev_date": "2026-03-03T12:59:14Z",
+      "scrape_date": "2026-03-04T05:09:48.426361Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jlchph3qc4qa2zpmgfban01p4kwr2fdq-bats-1.12.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bats",
+      "broken": false,
+      "derivation": "/nix/store/vgk203aq02hydb6fy110sa3rk76258lk-bats-1.12.0.drv",
+      "description": "Bash Automated Testing System",
+      "install_id": "bats",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "name": "bats-1.12.0",
+      "pname": "bats",
+      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "rev_count": 957538,
+      "rev_date": "2026-03-03T12:59:14Z",
+      "scrape_date": "2026-03-04T05:38:32.020678Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/l4h9pqlhdalbxk9qavjhqdczxjmby4c3-bats-1.12.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bats",
+      "broken": false,
+      "derivation": "/nix/store/63pyf2mnm90p7q2afhch9d3g7rbl69b4-bats-1.12.0.drv",
+      "description": "Bash Automated Testing System",
+      "install_id": "bats",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "name": "bats-1.12.0",
+      "pname": "bats",
+      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "rev_count": 957538,
+      "rev_date": "2026-03-03T12:59:14Z",
+      "scrape_date": "2026-03-04T06:12:08.906673Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.12.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fysq4digrp7zdpfbw0xmhk4bnp8w13rj-bats-1.12.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
     {
       "attr_path": "shellcheck",
       "broken": false,
