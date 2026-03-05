@@ -21,6 +21,8 @@
 #   TRITON_GRPC_PORT         gRPC port (default: 8001)
 #   TRITON_METRICS_PORT      Metrics port (default: 8002)
 #   TRITON_HOST              Bind address (default: 0.0.0.0)
+#   TRITON_OPENAI_FRONTEND   Enable OpenAI-compatible frontend (default: false)
+#   TRITON_OPENAI_PORT       OpenAI frontend port (default: 9000)
 #   TRITON_GPU_WARN_PCT      Warn if GPU memory usage exceeds this % (default: 50)
 #   TRITON_SKIP_GPU_CHECK    Skip GPU checks (default: 0)
 #   TRITON_DRY_RUN           Report only, don't kill (default: 0)
@@ -49,6 +51,9 @@ TRITON_HTTP_PORT="${TRITON_HTTP_PORT:-8000}"
 TRITON_GRPC_PORT="${TRITON_GRPC_PORT:-8001}"
 TRITON_METRICS_PORT="${TRITON_METRICS_PORT:-8002}"
 TRITON_HOST="${TRITON_HOST:-0.0.0.0}"
+
+TRITON_OPENAI_FRONTEND="${TRITON_OPENAI_FRONTEND:-false}"
+TRITON_OPENAI_PORT="${TRITON_OPENAI_PORT:-9000}"
 
 TRITON_GPU_WARN_PCT="${TRITON_GPU_WARN_PCT:-50}"
 TRITON_SKIP_GPU_CHECK="${TRITON_SKIP_GPU_CHECK:-0}"
@@ -109,13 +114,19 @@ lib::flock_or_die "$TRITON_PREFLIGHT_LOCKFILE" 10 "triton-preflight"
 
 # --- Multi-port reclaim ---
 
-python3 - "$TRITON_HOST" "$TRITON_HTTP_PORT" "$TRITON_GRPC_PORT" "$TRITON_METRICS_PORT" "$EUID" <<'PY'
+_preflight_ports=("$TRITON_HTTP_PORT" "$TRITON_GRPC_PORT" "$TRITON_METRICS_PORT")
+lib::require_bool TRITON_OPENAI_FRONTEND
+if lib::is_truthy "$TRITON_OPENAI_FRONTEND"; then
+  lib::require_pos_int TRITON_OPENAI_PORT
+  _preflight_ports+=("$TRITON_OPENAI_PORT")
+fi
+python3 - "$TRITON_HOST" "$EUID" "${_preflight_ports[@]}" <<'PY'
 import os, sys, socket, struct, time, signal, re, json
 from collections import defaultdict
 
 host = sys.argv[1]
-ports = [int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])]
-euid = int(sys.argv[5])
+euid = int(sys.argv[2])
+ports = [int(a) for a in sys.argv[3:]]
 
 allow_kill_other_uid = os.environ.get("TRITON_ALLOW_KILL_OTHER_UID", "0") == "1"
 dry_run = os.environ.get("TRITON_DRY_RUN", "0") == "1"
@@ -278,9 +289,9 @@ def read_uid(pid: int):
     return None
 
 def default_is_triton(cmd: str, exe: str) -> bool:
-    """Heuristic: match tritonserver in cmdline or exe."""
+    """Heuristic: match tritonserver or openai_frontend in cmdline or exe."""
     s = (cmd + " " + exe).lower()
-    return "tritonserver" in s
+    return "tritonserver" in s or "openai_frontend" in s
 
 def is_triton(cmd: str, exe: str) -> bool:
     if owner_re:

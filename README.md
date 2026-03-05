@@ -19,6 +19,12 @@ TRITON_MODEL=my-onnx-model \
 TRITON_MODEL_REPOSITORY=/data/models \
 TRITON_MODEL_BACKEND=onnx \
   flox activate --start-services
+
+# Launch with OpenAI-compatible frontend (port 9000)
+TRITON_OPENAI_FRONTEND=true \
+TRITON_OPENAI_TOKENIZER=meta-llama/Llama-3-8B \
+TRITON_MODEL=llama \
+  flox activate --start-services
 ```
 
 ### Verify it is running
@@ -35,6 +41,9 @@ curl http://127.0.0.1:8000/v2/models/my-onnx-model
 
 # Prometheus metrics
 curl http://127.0.0.1:8002/metrics
+
+# OpenAI-compatible endpoint (when TRITON_OPENAI_FRONTEND=true)
+curl http://127.0.0.1:9000/v1/models
 ```
 
 gRPC health checks require `grpcurl` or a gRPC client on port 8001. See the [Triton Inference Server documentation](https://github.com/triton-inference-server/server) for full API details.
@@ -51,6 +60,7 @@ gRPC health checks require `grpcurl` or a gRPC client on port 8001. See the [Tri
 | `TRITON_ALLOW_HTTP` | `true` (default) | Disable unused protocols |
 | `TRITON_ALLOW_GRPC` | `true` (default) | Disable unused protocols |
 | `TRITON_ALLOW_METRICS` | `true` (default) | `true` for observability |
+| `TRITON_OPENAI_FRONTEND` | `true` for OpenAI API testing | `true` when OpenAI-compatible API is needed |
 
 Production example:
 
@@ -93,14 +103,16 @@ triton-preflight && triton-resolve-model && triton-serve
 │  │    Output: per-model .env file (mode 600)          │  │
 │  ├────────────────────────────────────────────────────┤  │
 │  │  triton-serve                                      │  │
-│  │    Loads .env → validates args → exec tritonserver  │  │
+│  │    Loads .env → validates args                      │  │
+│  │    → exec tritonserver  (default)                   │  │
+│  │    → exec python3 main.py  (OPENAI_FRONTEND=true)  │  │
 │  └────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────┘
 ```
 
-1. **triton-preflight** -- Reclaims HTTP, gRPC, and metrics ports if occupied by stale tritonserver processes, checks GPU health via PyTorch or nvidia-smi fallback, optionally executes a downstream command.
+1. **triton-preflight** -- Reclaims HTTP, gRPC, metrics, and (when `TRITON_OPENAI_FRONTEND=true`) OpenAI ports if occupied by stale tritonserver or OpenAI frontend processes, checks GPU health via PyTorch or nvidia-smi fallback, optionally executes a downstream command.
 2. **triton-resolve-model** -- Provisions the model repository from configured sources with per-model locking, staging directories, atomic swaps, and layout validation. Writes a per-model env file.
-3. **triton-serve** -- Loads the env file (safe or trusted mode), validates all required vars, builds the `tritonserver` argv from env vars, and `exec`s.
+3. **triton-serve** -- Loads the env file (safe or trusted mode), validates all required vars, and `exec`s either `tritonserver` (default) or `python3 main.py` (when `TRITON_OPENAI_FRONTEND=true`).
 
 Scripts are provided by the `flox/triton-runtime` package and available on `PATH` after activation.
 
@@ -166,7 +178,7 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRITON_HOST` | `0.0.0.0` | Bind address for preflight port checks. Not passed to `tritonserver` (use `--` passthrough for `--http-address` / `--grpc-address`) |
+| `TRITON_HOST` | `0.0.0.0` | Bind address for preflight port checks. Passed to OpenAI frontend via `--host` when `TRITON_OPENAI_FRONTEND=true`. Not passed to `tritonserver` in standard mode (use `--` passthrough for `--http-address` / `--grpc-address`) |
 | `TRITON_HTTP_PORT` | `8000` | HTTP API port. Must be 1-65535 |
 | `TRITON_GRPC_PORT` | `8001` | gRPC API port. Must be 1-65535 |
 | `TRITON_METRICS_PORT` | `8002` | Prometheus metrics port. Must be 1-65535 |
@@ -194,6 +206,15 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 | `TRITON_ALLOW_GRPC` | `true` | Enable gRPC endpoint. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
 | `TRITON_ALLOW_METRICS` | `true` | Enable Prometheus metrics endpoint. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
 | `TRITON_BACKEND_CONFIG` | _(unset)_ | Comma-separated backend configs. Format: `backend:key=val,backend:key=val` |
+
+### OpenAI frontend settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRITON_OPENAI_FRONTEND` | `false` | Enable the OpenAI-compatible frontend mode. When `true`, `triton-serve` execs `python3 main.py` instead of `tritonserver`. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
+| `TRITON_OPENAI_PORT` | `9000` | Port for the OpenAI-compatible frontend. Must be a positive integer |
+| `TRITON_OPENAI_MAIN` | _(auto-discovered)_ | Path to `main.py`. Auto-searches `/opt/tritonserver/python/openai/main.py` and relative to the `tritonserver` binary. Set explicitly for non-standard installs |
+| `TRITON_OPENAI_TOKENIZER` | _(unset)_ | HuggingFace tokenizer for chat template rendering (e.g., `meta-llama/Llama-3-8B`). Required for chat completions |
 
 ### Pre-flight settings
 
@@ -346,7 +367,7 @@ In dry-run mode (`TRITON_DRY_RUN=1`), exit code `5` cannot occur since no proces
 
 ### Multi-port reclaim behavior
 
-1. **Single-pass scan**: Parses `/proc/net/tcp` and `/proc/net/tcp6` for LISTEN-state sockets matching all three configured ports (HTTP, gRPC, metrics) simultaneously.
+1. **Single-pass scan**: Parses `/proc/net/tcp` and `/proc/net/tcp6` for LISTEN-state sockets matching all configured ports (HTTP, gRPC, metrics, and OpenAI when `TRITON_OPENAI_FRONTEND=true`) simultaneously.
 2. **Target resolution**: Resolves the bind address to IPv4/IPv6 targets, including wildcard (`0.0.0.0`/`::`) catchall matching.
 3. **Inode mapping**: Maps socket inodes to PIDs via `/proc/<pid>/fd/` symlink scanning.
 4. **Unmappable inodes**: If any inodes cannot be mapped, exits with code 4 and reports affected ports.
@@ -395,7 +416,7 @@ Acquired via `flock` on `TRITON_PREFLIGHT_LOCKFILE` (default `/tmp/triton-prefli
 
 ## Serving (triton-serve)
 
-Loads the resolved model env file, validates configuration, and executes `tritonserver`.
+Loads the resolved model env file, validates configuration, and executes `tritonserver` (default) or the OpenAI-compatible frontend (`python3 main.py`) when `TRITON_OPENAI_FRONTEND=true`.
 
 ### Usage
 
@@ -420,6 +441,8 @@ The env file must define `_TRITON_RESOLVED_PATH` or `triton-serve` exits with an
 **Legacy path fallback**: If the hashed env file path does not exist, `triton-serve` falls back to a legacy slug-only path (`triton-model.<slug>.env`).
 
 ### Command construction
+
+#### Standard mode (default)
 
 `triton-serve` builds the final argv as:
 
@@ -455,6 +478,40 @@ The env-var-to-CLI-flag mapping:
 | `TRITON_ALLOW_METRICS` | `--allow-metrics=false` | When falsy |
 | `TRITON_BACKEND_CONFIG` | `--backend-config` | When set (one flag per entry) |
 
+#### OpenAI frontend mode (`TRITON_OPENAI_FRONTEND=true`)
+
+When the OpenAI-compatible frontend is enabled, `triton-serve` execs `python3 main.py` instead of `tritonserver`. The OpenAI frontend is a FastAPI/Uvicorn application that embeds Triton in-process via Python bindings -- it replaces the standalone `tritonserver` binary. It ships in official Triton Docker containers at `/opt/tritonserver/python/openai/`.
+
+```bash
+python3 <TRITON_OPENAI_MAIN> \
+  --model-repository=<TRITON_MODEL_REPOSITORY> \
+  --openai-port=<TRITON_OPENAI_PORT> \
+  --host=<TRITON_HOST> \
+  [--tokenizer=<TRITON_OPENAI_TOKENIZER>]                   # when set
+  [--tritonserver-log-verbose-level=<TRITON_LOG_VERBOSE>]    # when > 0
+  [--enable-kserve-frontends]                                # when HTTP or gRPC enabled
+  [--kserve-http-port=<TRITON_HTTP_PORT>]                    # with kserve frontends
+  [--kserve-grpc-port=<TRITON_GRPC_PORT>]                    # with kserve frontends
+  [--backend-config=<spec> ...]                              # for each entry in TRITON_BACKEND_CONFIG
+  [extra args...]                                            # anything after --
+```
+
+| Env var | CLI flag | Condition |
+|---------|----------|-----------|
+| `TRITON_MODEL_REPOSITORY` | `--model-repository` | Always |
+| `TRITON_OPENAI_PORT` | `--openai-port` | Always |
+| `TRITON_HOST` | `--host` | Always |
+| `TRITON_OPENAI_TOKENIZER` | `--tokenizer` | When set |
+| `TRITON_LOG_VERBOSE` | `--tritonserver-log-verbose-level` | When > 0 |
+| `TRITON_ALLOW_HTTP` / `TRITON_ALLOW_GRPC` | `--enable-kserve-frontends` | When either is truthy |
+| `TRITON_HTTP_PORT` | `--kserve-http-port` | With kserve frontends |
+| `TRITON_GRPC_PORT` | `--kserve-grpc-port` | With kserve frontends |
+| `TRITON_BACKEND_CONFIG` | `--backend-config` | When set (one flag per entry) |
+
+When `--enable-kserve-frontends` is passed, the OpenAI frontend also serves KServe HTTP and gRPC, so all three interfaces (OpenAI port 9000, KServe HTTP port 8000, KServe gRPC port 8001) run from a single process.
+
+The `tritonserver` binary is not required on PATH in OpenAI frontend mode.
+
 ### Backend configuration
 
 `TRITON_BACKEND_CONFIG` accepts a comma-separated list of `backend:key=val` entries. Each entry becomes a separate `--backend-config` flag.
@@ -473,7 +530,7 @@ TRITON_BACKEND_CONFIG="tensorrt:coalesced-memory-size=256,python:shm-default-byt
 
 All checks performed before exec:
 
-- `tritonserver` must be on PATH.
+- `tritonserver` must be on PATH (skipped when `TRITON_OPENAI_FRONTEND=true`).
 - Env file must exist, be readable, and set `_TRITON_RESOLVED_PATH`.
 - `TRITON_MODEL_REPOSITORY` must be set and exist as a directory.
 - `_TRITON_RESOLVED_PATH` must exist as a directory.
@@ -481,6 +538,8 @@ All checks performed before exec:
 - `TRITON_LOG_VERBOSE` must be a non-negative integer.
 - `TRITON_MODEL_CONTROL_MODE` must be `none`, `explicit`, or `poll`.
 - `TRITON_STRICT_READINESS`, `TRITON_ALLOW_HTTP`, `TRITON_ALLOW_GRPC`, `TRITON_ALLOW_METRICS` must be valid boolean values.
+- `TRITON_OPENAI_FRONTEND` must be a valid boolean value.
+- When `TRITON_OPENAI_FRONTEND=true`: `TRITON_OPENAI_PORT` must be a positive integer, and `TRITON_OPENAI_MAIN` must point to an existing file (auto-discovered if not set).
 
 ## Multi-GPU
 
@@ -642,6 +701,26 @@ Common R2 issues:
 - Wrong `R2_ENDPOINT_URL` for the storage provider.
 
 Check staging logs (preserved on failure) at `$TRITON_MODEL_REPOSITORY/.staging/`.
+
+### OpenAI frontend main.py not found
+
+The OpenAI frontend auto-discovers `main.py` from standard locations (`/opt/tritonserver/python/openai/main.py` or relative to the `tritonserver` binary). If it fails, set the path explicitly:
+
+```bash
+TRITON_OPENAI_MAIN=/path/to/openai/main.py flox activate --start-services
+```
+
+### Chat completions return empty
+
+`TRITON_OPENAI_TOKENIZER` is required for chat completions. Set it to the HuggingFace tokenizer that matches your model:
+
+```bash
+TRITON_OPENAI_TOKENIZER=meta-llama/Llama-3-8B flox activate --start-services
+```
+
+### Connection refused on port 9000
+
+Verify that `TRITON_OPENAI_FRONTEND=true` is set. Without it, `triton-serve` launches `tritonserver` which does not serve the OpenAI-compatible API on port 9000.
 
 ### Stale lock
 

@@ -18,10 +18,15 @@
 #   TRITON_ALLOW_METRICS      Enable metrics (default: true)
 #   TRITON_BACKEND_CONFIG     Comma-separated backend configs (default: empty)
 #   TRITON_ENV_FILE_TRUSTED   Trust env file / direct source (default: false)
+#   TRITON_OPENAI_FRONTEND    Enable OpenAI-compatible frontend (default: false)
+#   TRITON_OPENAI_PORT        OpenAI frontend port (default: 9000)
+#   TRITON_OPENAI_MAIN        Path to OpenAI frontend main.py (auto-discovered)
+#   TRITON_OPENAI_TOKENIZER   HF tokenizer for chat templates
+#   TRITON_HOST               Bind address (default: 0.0.0.0) -- passed to OpenAI frontend
 #   FLOX_ENV_CACHE            For env file path derivation
 #
 # Usage:
-#   triton-serve [--print-cmd] [--dry-run] [--] [tritonserver args...]
+#   triton-serve [--print-cmd] [--dry-run] [--] [extra args...]
 
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -43,14 +48,15 @@ trap '_on_err "$LINENO" "$BASH_COMMAND"' ERR
 
 _print_help() {
   cat <<'EOF'
-Usage: triton-serve [--print-cmd] [--dry-run] [--] [tritonserver args...]
+Usage: triton-serve [--print-cmd] [--dry-run] [--] [extra args...]
 
 Script flags:
-  --print-cmd   Print the final tritonserver argv to stderr before exec
+  --print-cmd   Print the final argv to stderr before exec
   --dry-run     Print the final argv and exit 0 (do not exec)
   -h, --help    Show help
 
-Everything after `--` passes through to tritonserver.
+When TRITON_OPENAI_FRONTEND=true, execs python3 main.py (OpenAI-compatible
+frontend) instead of tritonserver. Extra args pass through to either command.
 EOF
 }
 
@@ -84,9 +90,18 @@ TRITON_ALLOW_METRICS="${TRITON_ALLOW_METRICS:-true}"
 TRITON_BACKEND_CONFIG="${TRITON_BACKEND_CONFIG:-}"
 TRITON_ENV_FILE_TRUSTED="${TRITON_ENV_FILE_TRUSTED:-false}"
 
-# --- Ensure tritonserver exists ---
+TRITON_OPENAI_FRONTEND="${TRITON_OPENAI_FRONTEND:-false}"
+TRITON_OPENAI_PORT="${TRITON_OPENAI_PORT:-9000}"
+TRITON_OPENAI_MAIN="${TRITON_OPENAI_MAIN:-}"
+TRITON_OPENAI_TOKENIZER="${TRITON_OPENAI_TOKENIZER:-}"
+TRITON_HOST="${TRITON_HOST:-0.0.0.0}"
 
-command -v tritonserver >/dev/null 2>&1 || lib::die "'tritonserver' not found in PATH"
+# --- Ensure tritonserver exists (not required in OpenAI frontend mode) ---
+
+lib::require_bool TRITON_OPENAI_FRONTEND
+if ! lib::is_truthy "$TRITON_OPENAI_FRONTEND"; then
+  command -v tritonserver >/dev/null 2>&1 || lib::die "'tritonserver' not found in PATH"
+fi
 
 # --- Resolve env file path ---
 
@@ -161,38 +176,95 @@ done
 [[ -d "$TRITON_MODEL_REPOSITORY" ]] || lib::die "Model repository does not exist: $TRITON_MODEL_REPOSITORY"
 [[ -d "$_TRITON_RESOLVED_PATH" ]] || lib::die "Resolved model path does not exist: $_TRITON_RESOLVED_PATH"
 
+if lib::is_truthy "$TRITON_OPENAI_FRONTEND"; then
+  lib::require_pos_int TRITON_OPENAI_PORT
+
+  # Auto-discover main.py
+  if [[ -z "$TRITON_OPENAI_MAIN" ]]; then
+    if [[ -f "/opt/tritonserver/python/openai/main.py" ]]; then
+      TRITON_OPENAI_MAIN="/opt/tritonserver/python/openai/main.py"
+    elif command -v tritonserver >/dev/null 2>&1; then
+      _ts_bin="$(command -v tritonserver)"
+      _ts_prefix="$(dirname "$_ts_bin")/.."
+      if [[ -f "$_ts_prefix/python/openai/main.py" ]]; then
+        TRITON_OPENAI_MAIN="$_ts_prefix/python/openai/main.py"
+      fi
+    fi
+    [[ -n "$TRITON_OPENAI_MAIN" ]] || lib::die "OpenAI frontend main.py not found. Set TRITON_OPENAI_MAIN explicitly."
+  fi
+  [[ -f "$TRITON_OPENAI_MAIN" ]] || lib::die "OpenAI frontend main.py not found at: $TRITON_OPENAI_MAIN"
+fi
+
 # --- Build command ---
 
-cmd=(
-  tritonserver
-  --model-repository="$TRITON_MODEL_REPOSITORY"
-  --http-port="$TRITON_HTTP_PORT"
-  --grpc-port="$TRITON_GRPC_PORT"
-  --metrics-port="$TRITON_METRICS_PORT"
-  --model-control-mode="$TRITON_MODEL_CONTROL_MODE"
-  --strict-readiness="$TRITON_STRICT_READINESS"
-  --log-verbose="$TRITON_LOG_VERBOSE"
-)
+if lib::is_truthy "$TRITON_OPENAI_FRONTEND"; then
+  # --- OpenAI frontend mode ---
+  cmd=(
+    python3 "$TRITON_OPENAI_MAIN"
+    --model-repository="$TRITON_MODEL_REPOSITORY"
+    --openai-port="$TRITON_OPENAI_PORT"
+    --host="$TRITON_HOST"
+  )
 
-# Protocol toggles
-if ! lib::is_truthy "$TRITON_ALLOW_HTTP"; then
-  cmd+=(--allow-http=false)
-fi
-if ! lib::is_truthy "$TRITON_ALLOW_GRPC"; then
-  cmd+=(--allow-grpc=false)
-fi
-if ! lib::is_truthy "$TRITON_ALLOW_METRICS"; then
-  cmd+=(--allow-metrics=false)
-fi
+  # Tokenizer (required for chat completions)
+  if [[ -n "$TRITON_OPENAI_TOKENIZER" ]]; then
+    cmd+=(--tokenizer="$TRITON_OPENAI_TOKENIZER")
+  fi
 
-# Backend configs: TRITON_BACKEND_CONFIG="backend:key=val,backend:key=val"
-if [[ -n "$TRITON_BACKEND_CONFIG" ]]; then
-  IFS=',' read -ra _bc_parts <<< "$TRITON_BACKEND_CONFIG"
-  for _bc in "${_bc_parts[@]}"; do
-    _bc="${_bc#"${_bc%%[![:space:]]*}"}"
-    _bc="${_bc%"${_bc##*[![:space:]]}"}"
-    [[ -n "$_bc" ]] && cmd+=(--backend-config="$_bc")
-  done
+  # Log verbosity
+  if (( TRITON_LOG_VERBOSE > 0 )); then
+    cmd+=(--tritonserver-log-verbose-level="$TRITON_LOG_VERBOSE")
+  fi
+
+  # KServe frontends: enable when HTTP or gRPC is wanted
+  if lib::is_truthy "$TRITON_ALLOW_HTTP" || lib::is_truthy "$TRITON_ALLOW_GRPC"; then
+    cmd+=(--enable-kserve-frontends)
+    cmd+=(--kserve-http-port="$TRITON_HTTP_PORT")
+    cmd+=(--kserve-grpc-port="$TRITON_GRPC_PORT")
+  fi
+
+  # Backend configs
+  if [[ -n "$TRITON_BACKEND_CONFIG" ]]; then
+    IFS=',' read -ra _bc_parts <<< "$TRITON_BACKEND_CONFIG"
+    for _bc in "${_bc_parts[@]}"; do
+      _bc="${_bc#"${_bc%%[![:space:]]*}"}"
+      _bc="${_bc%"${_bc##*[![:space:]]}"}"
+      [[ -n "$_bc" ]] && cmd+=(--backend-config="$_bc")
+    done
+  fi
+else
+  # --- Standard tritonserver mode ---
+  cmd=(
+    tritonserver
+    --model-repository="$TRITON_MODEL_REPOSITORY"
+    --http-port="$TRITON_HTTP_PORT"
+    --grpc-port="$TRITON_GRPC_PORT"
+    --metrics-port="$TRITON_METRICS_PORT"
+    --model-control-mode="$TRITON_MODEL_CONTROL_MODE"
+    --strict-readiness="$TRITON_STRICT_READINESS"
+    --log-verbose="$TRITON_LOG_VERBOSE"
+  )
+
+  # Protocol toggles
+  if ! lib::is_truthy "$TRITON_ALLOW_HTTP"; then
+    cmd+=(--allow-http=false)
+  fi
+  if ! lib::is_truthy "$TRITON_ALLOW_GRPC"; then
+    cmd+=(--allow-grpc=false)
+  fi
+  if ! lib::is_truthy "$TRITON_ALLOW_METRICS"; then
+    cmd+=(--allow-metrics=false)
+  fi
+
+  # Backend configs: TRITON_BACKEND_CONFIG="backend:key=val,backend:key=val"
+  if [[ -n "$TRITON_BACKEND_CONFIG" ]]; then
+    IFS=',' read -ra _bc_parts <<< "$TRITON_BACKEND_CONFIG"
+    for _bc in "${_bc_parts[@]}"; do
+      _bc="${_bc#"${_bc%%[![:space:]]*}"}"
+      _bc="${_bc%"${_bc##*[![:space:]]}"}"
+      [[ -n "$_bc" ]] && cmd+=(--backend-config="$_bc")
+    done
+  fi
 fi
 
 # Extra passthrough args
