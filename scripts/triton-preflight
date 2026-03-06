@@ -6,11 +6,11 @@
 # Exit codes (stable contract):
 #   0  success (or nothing to do)
 #   1  general validation error / GPU hard failure / bad config
-#   2  port(s) owned by non-Triton process(es)
+#   2  port(s) owned by non-Triton process(es) and nothing reclaimable
 #   3  Triton owned by different UID (blocked)
 #   4  listener found but not attributable (permissions/hidepid)
 #   5  attempted stop but port(s) still listening
-#   6  partial port reclaim (some freed, some blocked)
+#   6  partial port reclaim (stopped Triton for some ports, but other ports remain blocked)
 #
 # Stdout/stderr contract:
 #   stderr: human logs, warnings, errors
@@ -31,19 +31,399 @@
 #   TRITON_ALLOW_KILL_OTHER_UID  Allow killing other users' processes (default: 0)
 #   TRITON_TERM_GRACE        Seconds SIGTERM->SIGKILL grace (default: 3)
 #   TRITON_PORT_FREE_TIMEOUT Seconds to wait for port free (default: 10)
-#   TRITON_PREFLIGHT_LOCKFILE Lock file path (default: /tmp/triton-preflight.lock)
+#   TRITON_PREFLIGHT_LOCKFILE  Lock file path override (highest priority)
+#   TRITON_PREFLIGHT_LOCKDIR   Lock directory override (places keyed lockfile inside)
+#   TRITON_LOCK_SCOPE          Lock scope: "lifetime" (default, holds across exec) or "preflight" (release before exec)
+#
+#   Lock dir default (when neither override is set), first usable:
+#     1) $XDG_RUNTIME_DIR (exists, owned by UID, writable, not symlink)
+#     2) /run/user/$UID (exists, writable, not symlink)
+#     3) ${TMPDIR:-/tmp}/triton-preflight/$UID (created chmod 700; verified)
+#   TRITON_PRINT_CMD           Print downstream argv to stderr (redacted) (default: 0)
+#   TRITON_CHECK_ONLY          Validation + reporting only; no signals, no exec (default: 0)
 #
 # Usage:
-#   ./triton-preflight                     # checks only
-#   ./triton-preflight ./start.sh ...      # checks, then runs command
-#   ./triton-preflight -- python -m ...    # checks, then runs command (after --)
+#   ./triton-preflight                           # checks only
+#   ./triton-preflight ./start.sh ...            # checks, then runs command
+#   ./triton-preflight -- python -m ...          # checks, then runs command (after --)
 
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=_lib.sh
-source "$SCRIPT_DIR/_lib.sh"
+# ------------------------------
+# Minimal self-contained helpers
+# ------------------------------
+
+log()  { printf '%s\n' "$*" >&2; }
+warn() { log "WARNING: $*"; }
+
+json_escape() {
+  local s=${1-}
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+emit_json_error() {
+  local code=${1:-1}
+  local msg=${2-}
+  local stage=${3-}
+  if [[ "${TRITON_PREFLIGHT_JSON:-0}" == "1" ]]; then
+    local msg_e stage_e
+    msg_e=$(json_escape "$msg")
+    stage_e=$(json_escape "$stage")
+    if [[ -n "$stage" ]]; then
+      printf '{"status":"error","code":%s,"stage":"%s","message":"%s"}\n' "$code" "$stage_e" "$msg_e"
+    else
+      printf '{"status":"error","code":%s,"message":"%s"}\n' "$code" "$msg_e"
+    fi
+  fi
+}
+
+die() {
+  local msg=${1-"fatal"}
+  local code=${2:-1}
+  local stage=${3-}
+  trap - ERR
+  log "ERROR: $msg"
+  emit_json_error "$code" "$msg" "$stage"
+  exit "$code"
+}
+
+is_int() { [[ ${1-} =~ ^[0-9]+$ ]]; }
+
+is_num() {
+  [[ ${1-} =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ ${1-} =~ ^[.][0-9]+$ ]]
+}
+
+require_bool() {
+  local var=$1
+  local v=${!var-}
+  case "$v" in
+    1|0|true|false|yes|no|on|off) return 0;;
+    *) die "$var must be boolean-like (0/1/true/false/yes/no/on/off); got: $v" 1 "validation";;
+  esac
+}
+
+is_truthy() {
+  local v=${1-}
+  case "$v" in
+    1|true|yes|on) return 0;;
+    *) return 1;;
+  esac
+}
+
+normalize_bool_var() {
+  local var=$1
+  require_bool "$var"
+  if is_truthy "${!var}"; then
+    printf -v "$var" "1"
+  else
+    printf -v "$var" "0"
+  fi
+}
+
+require_pos_int() {
+  local var=$1
+  local v=${!var-}
+  is_int "$v" || die "$var must be a positive integer; got: $v" 1 "validation"
+  (( v >= 1 && v <= 65535 )) || die "$var out of range: $v" 1 "validation"
+}
+
+flock_or_die() {
+  local lockfile=$1
+  local wait_s=$2
+  local name=$3
+
+  local dir
+  dir=$(dirname -- "$lockfile")
+
+  # Safety checks (best-effort; avoids common foot-guns)
+  if [[ -L "$dir" ]]; then
+    die "Refusing to use symlink lock dir: $dir" 1 "lock"
+  fi
+  if [[ -e "$lockfile" && -L "$lockfile" ]]; then
+    die "Refusing to use symlink lock file: $lockfile" 1 "lock"
+  fi
+
+  exec 9>"$lockfile" || die "Cannot open lock file: $lockfile" 1 "lock"
+  if ! flock -w "$wait_s" 9; then
+    die "$name could not acquire lock ($lockfile) within ${wait_s}s" 1 "lock"
+  fi
+}
+
+
+slugify() {
+  local s=${1-}
+  # Keep it filesystem-safe and reasonably short.
+  s=${s//[^A-Za-z0-9._-]/_}
+  s=${s//__/_}
+  printf '%s' "${s:0:64}"
+}
+
+short_sha256() {
+  local s=${1-}
+  python3 - "$s" <<'PY'
+import sys, hashlib
+s = sys.argv[1].encode("utf-8", "replace")
+print(hashlib.sha256(s).hexdigest()[:10])
+PY
+}
+
+pick_lock_dir() {
+  # 0) Explicit override wins.
+  local dir="${TRITON_PREFLIGHT_LOCKDIR:-}"
+  if [[ -n "$dir" ]]; then
+    [[ -d "$dir" ]] || die "Lock dir does not exist: $dir" 1 "lock"
+    [[ -w "$dir" ]] || die "Lock dir is not writable: $dir" 1 "lock"
+    [[ -L "$dir" ]] && die "Refusing to use symlink lock dir: $dir" 1 "lock"
+    printf '%s' "$dir"
+    return 0
+  fi
+
+  # 1) Per-user runtime dir (best).
+  dir="${XDG_RUNTIME_DIR:-}"
+  if [[ -n "$dir" ]]; then
+    if [[ -d "$dir" && -w "$dir" && ! -L "$dir" ]]; then
+      local owner
+      owner="$(stat -c %u "$dir" 2>/dev/null || echo "")"
+      if [[ "$owner" == "$UID" ]]; then
+        printf '%s' "$dir"
+        return 0
+      fi
+    fi
+  fi
+
+  # 2) System user runtime.
+  dir="/run/user/$UID"
+  if [[ -d "$dir" && -w "$dir" && ! -L "$dir" ]]; then
+    printf '%s' "$dir"
+    return 0
+  fi
+
+  # 3) Temp dir (container-friendly).
+  dir="${TMPDIR:-/tmp}/triton-preflight/$UID"
+
+  # Refuse obvious symlink shenanigans at the final path.
+  if [[ -L "$dir" ]]; then
+    die "Refusing to use symlink lock dir: $dir" 1 "lock"
+  fi
+
+  mkdir -p "$dir" || die "Cannot create lock dir: $dir" 1 "lock"
+  chmod 700 "$dir" 2>/dev/null || true
+
+  # Verify and/or tighten.
+  if [[ -L "$dir" ]]; then
+    die "Refusing to use symlink lock dir: $dir" 1 "lock"
+  fi
+
+  local owner mode
+  owner="$(stat -c %u "$dir" 2>/dev/null || echo "")"
+  [[ "$owner" == "$UID" ]] || die "Lock dir is not owned by UID $UID: $dir" 1 "lock"
+
+  mode="$(stat -c %a "$dir" 2>/dev/null || echo "")"
+  if [[ "$mode" != "700" ]]; then
+    chmod 700 "$dir" 2>/dev/null || true
+    mode="$(stat -c %a "$dir" 2>/dev/null || echo "")"
+  fi
+  [[ "$mode" == "700" ]] || die "Lock dir must have mode 700 (got $mode): $dir" 1 "lock"
+
+  [[ -w "$dir" ]] || die "Lock dir is not writable: $dir" 1 "lock"
+  printf '%s' "$dir"
+}
+
+compute_lockfile() {
+  # Highest priority: explicit file path.
+  if [[ -n "${TRITON_PREFLIGHT_LOCKFILE:-}" ]]; then
+    printf '%s' "$TRITON_PREFLIGHT_LOCKFILE"
+    return 0
+  fi
+
+  local host=${1-}; shift
+  local euid=${1-}; shift
+
+  local ports_join
+  ports_join=$(printf '%s,' "$@" | sed 's/,$//')
+
+  # Lock naming to avoid global contention:
+  #   triton-preflight.<slug(host,ports)>.<short_sha(host,ports,euid)>.lock
+  local slug
+  slug="$(slugify "$host").$(slugify "${ports_join//,/--}")"
+
+  local h
+  h=$(short_sha256 "host=${host}|ports=${ports_join}|euid=${euid}")
+
+  local dir
+  dir="$(pick_lock_dir)"
+
+  printf '%s/triton-preflight.%s.%s.lock' "$dir" "$slug" "$h"
+}
+
+json_ports_array() {
+  # Prints a JSON array like [8000,8001] for the given numeric args.
+  local first=1
+  printf '['
+  for p in "$@"; do
+    if [[ $first -eq 1 ]]; then
+      first=0
+    else
+      printf ','
+    fi
+    printf '%s' "$p"
+  done
+  printf ']'
+}
+
+redact_downstream_cmd() {
+  # Redact common secret carriers from argv and print shell-escaped.
+  local -a in=("$@") out=()
+  local i=0
+
+  while (( i < ${#in[@]} )); do
+    local a="${in[i]}"
+    case "$a" in
+      --token=*|--api-key=*|--apikey=*|--password=*|--pass=*|--secret=*|--access-token=*|--auth-token=*)
+        out+=("${a%%=*}=<redacted>")
+        ;;
+      --token|--api-key|--apikey|--password|--pass|--secret|--access-token|--auth-token)
+        out+=("$a")
+        i=$((i+1))
+        if (( i < ${#in[@]} )); then out+=("<redacted>"); fi
+        ;;
+      -H|--header)
+        out+=("$a")
+        i=$((i+1))
+        if (( i < ${#in[@]} )); then
+          local h="${in[i]}"
+          local lh="${h,,}"
+          if [[ "$lh" == authorization:* ]] || [[ "$lh" == proxy-authorization:* ]]; then
+            out+=("${h%%:*}: <redacted>")
+          elif [[ "$lh" == x-api-key:* ]] || [[ "$lh" == api-key:* ]]; then
+            out+=("${h%%:*}: <redacted>")
+          else
+            out+=("$h")
+          fi
+        fi
+        ;;
+      *)
+        local lh="${a,,}"
+        if [[ "$lh" == authorization:* ]] || [[ "$lh" == proxy-authorization:* ]]; then
+          out+=("${a%%:*}: <redacted>")
+        else
+          out+=("$a")
+        fi
+        ;;
+    esac
+    i=$((i+1))
+  done
+
+  local s=""
+  for a in "${out[@]}"; do
+    s+="$(printf '%q ' "$a")"
+  done
+  printf '%s' "${s% }"
+}
+
+try_bind_fastpath() {
+  # Returns 0 iff every (host, port) tuple returned by getaddrinfo() can be bound.
+  local host="${1-}"; shift
+  python3 - "$host" "$@" <<'PY'
+import sys, socket, errno
+
+host = sys.argv[1]
+ports = [int(p) for p in sys.argv[2:]]
+
+# Use AI_PASSIVE when host is empty/"0.0.0.0"/"::" so wildcard resolution works as intended.
+def get_addrs(h, port):
+    flags = 0
+    if h in ("", "0.0.0.0", "::"):
+        flags |= socket.AI_PASSIVE
+        h2 = None if h == "" else h
+    else:
+        h2 = h
+    return socket.getaddrinfo(h2, port, type=socket.SOCK_STREAM, flags=flags)
+
+socks = []
+in_use = False
+fatal_err = None
+fatal_ctx = None
+
+def note_fatal(msg, err=None):
+    global fatal_err, fatal_ctx
+    if fatal_err is None:
+        fatal_err = err
+        fatal_ctx = msg
+
+try:
+    for port in ports:
+        try:
+            infos = get_addrs(host, port)
+        except socket.gaierror as e:
+            note_fatal(f"Bind check: getaddrinfo({host!r}, {port}) failed", e)
+            continue
+
+        seen = set()
+        for fam, stype, proto, _, sa in infos:
+            key = (fam, sa)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            s = socket.socket(fam, stype, proto)
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            except OSError:
+                pass
+
+            try:
+                s.bind(sa)
+            except OSError as e:
+                if e.errno == errno.EADDRINUSE:
+                    in_use = True
+                else:
+                    # Resolvable but not bindable here (EADDRNOTAVAIL/EACCES/EINVAL/...).
+                    note_fatal(f"Bind check: {host}:{port} is not bindable on this node", e)
+                try:
+                    s.close()
+                except Exception:
+                    pass
+                continue
+
+            socks.append(s)
+
+    if fatal_err is not None:
+        print(f"{fatal_ctx}: {fatal_err}", file=sys.stderr)
+        sys.exit(1)
+    if in_use:
+        # Port is in use; fall back to ownership scan/reclaim logic.
+        sys.exit(2)
+    sys.exit(0)
+finally:
+    for s in socks:
+        try:
+            s.close()
+        except Exception:
+            pass
+PY
+}
+
+on_err() {
+  local rc=$?
+  local line=${BASH_LINENO[0]:-?}
+  local cmd=${BASH_COMMAND-"?"}
+  die "Unhandled error (rc=$rc) at line $line: $cmd" 1 "runtime"
+}
+trap on_err ERR
+
+# Temp-file cleanup (only relevant when we do not exec a downstream command).
+cleanup_tmpfiles() {
+  [[ -n "${_json_tmp:-}" ]] && rm -f -- "$_json_tmp" 2>/dev/null || true
+  [[ -n "${_json_ok_file:-}" ]] && rm -f -- "$_json_ok_file" 2>/dev/null || true
+}
+trap cleanup_tmpfiles EXIT
 
 # --- Defaults ---
 
@@ -65,31 +445,75 @@ TRITON_ALLOW_KILL_OTHER_UID="${TRITON_ALLOW_KILL_OTHER_UID:-0}"
 
 TRITON_TERM_GRACE="${TRITON_TERM_GRACE:-3}"
 TRITON_PORT_FREE_TIMEOUT="${TRITON_PORT_FREE_TIMEOUT:-10}"
-TRITON_PREFLIGHT_LOCKFILE="${TRITON_PREFLIGHT_LOCKFILE:-/tmp/triton-preflight.lock}"
+TRITON_PREFLIGHT_LOCKFILE="${TRITON_PREFLIGHT_LOCKFILE:-}"
+TRITON_PREFLIGHT_LOCKDIR="${TRITON_PREFLIGHT_LOCKDIR:-}"
+TRITON_PRINT_CMD="${TRITON_PRINT_CMD:-0}"
+TRITON_CHECK_ONLY="${TRITON_CHECK_ONLY:-0}"
+TRITON_LOCK_SCOPE="${TRITON_LOCK_SCOPE:-lifetime}"
 
 # --- Validation ---
 
 for _pvar in TRITON_HTTP_PORT TRITON_GRPC_PORT TRITON_METRICS_PORT; do
-  lib::is_int "${!_pvar}" || lib::die "$_pvar must be an integer (got: ${!_pvar})"
-  (( ${!_pvar} >= 1 && ${!_pvar} <= 65535 )) || lib::die "$_pvar out of range: ${!_pvar}"
+  is_int "${!_pvar}" || die "$_pvar must be an integer (got: ${!_pvar})" 1 "validation"
+  (( ${!_pvar} >= 1 && ${!_pvar} <= 65535 )) || die "$_pvar out of range: ${!_pvar}" 1 "validation"
 done
 
-lib::is_num "$TRITON_GPU_WARN_PCT" || lib::die "TRITON_GPU_WARN_PCT must be numeric (got: $TRITON_GPU_WARN_PCT)"
-lib::is_num "$TRITON_TERM_GRACE" || lib::die "TRITON_TERM_GRACE must be numeric (got: $TRITON_TERM_GRACE)"
-lib::is_num "$TRITON_PORT_FREE_TIMEOUT" || lib::die "TRITON_PORT_FREE_TIMEOUT must be numeric (got: $TRITON_PORT_FREE_TIMEOUT)"
+is_num "$TRITON_GPU_WARN_PCT" || die "TRITON_GPU_WARN_PCT must be numeric (got: $TRITON_GPU_WARN_PCT)" 1 "validation"
+is_num "$TRITON_TERM_GRACE" || die "TRITON_TERM_GRACE must be numeric (got: $TRITON_TERM_GRACE)" 1 "validation"
+is_num "$TRITON_PORT_FREE_TIMEOUT" || die "TRITON_PORT_FREE_TIMEOUT must be numeric (got: $TRITON_PORT_FREE_TIMEOUT)" 1 "validation"
 
-for _bvar in TRITON_DRY_RUN TRITON_PREFLIGHT_JSON TRITON_ALLOW_KILL_OTHER_UID TRITON_SKIP_GPU_CHECK; do
-  [[ "${!_bvar}" == "0" || "${!_bvar}" == "1" ]] || lib::die "$_bvar must be 0 or 1 (got: ${!_bvar})"
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$TRITON_HOST" <<'PY' || die "TRITON_HOST is invalid or unresolvable: $TRITON_HOST" 1 "validation"
+import sys, ipaddress, socket
+h = sys.argv[1]
+if h in ("", "0.0.0.0", "::"):
+    sys.exit(0)
+try:
+    ipaddress.ip_address(h)
+    sys.exit(0)
+except ValueError:
+    try:
+        socket.getaddrinfo(h, None)
+        sys.exit(0)
+    except Exception:
+        sys.exit(1)
+PY
+fi
+
+for _bvar in TRITON_DRY_RUN TRITON_PREFLIGHT_JSON TRITON_ALLOW_KILL_OTHER_UID TRITON_SKIP_GPU_CHECK TRITON_PRINT_CMD TRITON_CHECK_ONLY TRITON_OPENAI_FRONTEND; do
+  normalize_bool_var "$_bvar"
 done
+
+case "$TRITON_LOCK_SCOPE" in
+  lifetime|preflight) ;;
+  *) die "TRITON_LOCK_SCOPE must be 'lifetime' or 'preflight' (got: $TRITON_LOCK_SCOPE)" 1 "validation";;
+esac
 
 # Python range checks
-python3 - "$TRITON_GPU_WARN_PCT" "$TRITON_TERM_GRACE" "$TRITON_PORT_FREE_TIMEOUT" <<'PY' || lib::die "Numeric range validation failed"
+if command -v python3 >/dev/null 2>&1; then
+  _range_err=$(mktemp)
+  if python3 - "$TRITON_GPU_WARN_PCT" "$TRITON_TERM_GRACE" "$TRITON_PORT_FREE_TIMEOUT" 2>"$_range_err" <<'PY'
 import sys
 warn = float(sys.argv[1]); grace = float(sys.argv[2]); timeout = float(sys.argv[3])
 if not (0 <= warn <= 100): raise SystemExit("TRITON_GPU_WARN_PCT must be 0..100")
 if grace < 0: raise SystemExit("TRITON_TERM_GRACE must be >= 0")
 if timeout < 0: raise SystemExit("TRITON_PORT_FREE_TIMEOUT must be >= 0")
 PY
+  then
+    :
+  else
+    _msg=$(cat "$_range_err" 2>/dev/null || true)
+    rm -f "$_range_err" || true
+    _msg=${_msg//$'\n'/ }
+    _msg=${_msg//$'\r'/ }
+    die "${_msg:-Numeric range validation failed}" 1 "validation"
+  fi
+  rm -f "$_range_err" || true
+else
+  die "python3 not found" 1 "prereq"
+fi
+
+command -v flock >/dev/null 2>&1 || die "flock not found" 1 "prereq"
 
 # --- Downstream command ---
 
@@ -99,29 +523,69 @@ if [[ $# -gt 0 ]]; then
   if [[ $# -gt 0 ]]; then _downstream=("$@"); fi
 fi
 
-if [[ "$TRITON_PREFLIGHT_JSON" == "1" && ${#_downstream[@]} -gt 0 ]]; then
-  lib::die "TRITON_PREFLIGHT_JSON=1 is incompatible with a downstream command (stdout must stay JSON-only)."
+if [[ "$TRITON_PREFLIGHT_JSON" == "1" && ${#_downstream[@]} -gt 0 && "$TRITON_CHECK_ONLY" != "1" ]]; then
+  die "TRITON_PREFLIGHT_JSON=1 is incompatible with a downstream command (stdout must stay JSON-only)." 1 "validation"
 fi
 
-# --- Prerequisites ---
+if [[ "$TRITON_CHECK_ONLY" == "1" && ${#_downstream[@]} -gt 0 ]]; then
+  warn "TRITON_CHECK_ONLY=1: ignoring downstream command; will not exec."
+fi
 
-command -v python3 >/dev/null 2>&1 || lib::die "python3 not found"
-command -v flock >/dev/null 2>&1 || lib::die "flock not found"
+if [[ "$TRITON_PRINT_CMD" == "1" && ${#_downstream[@]} -gt 0 ]]; then
+  log "Downstream cmd (redacted): $(redact_downstream_cmd "${_downstream[@]}")"
+fi
+
+# --- Multi-port targets ---
+
+_preflight_ports=("$TRITON_HTTP_PORT" "$TRITON_GRPC_PORT" "$TRITON_METRICS_PORT")
+require_bool TRITON_OPENAI_FRONTEND
+if is_truthy "$TRITON_OPENAI_FRONTEND"; then
+  require_pos_int TRITON_OPENAI_PORT
+  _preflight_ports+=("$TRITON_OPENAI_PORT")
+fi
+
+# Compute a keyed lockfile unless TRITON_PREFLIGHT_LOCKFILE overrides.
+TRITON_PREFLIGHT_LOCKFILE="$(compute_lockfile "$TRITON_HOST" "$EUID" "${_preflight_ports[@]}")"
 
 # --- Lock ---
 
-lib::flock_or_die "$TRITON_PREFLIGHT_LOCKFILE" 10 "triton-preflight"
+flock_or_die "$TRITON_PREFLIGHT_LOCKFILE" 10 "triton-preflight"
 
-# --- Multi-port reclaim ---
+# --- Try-bind fast path (skip /proc ownership scan when all binds succeed) ---
 
-_preflight_ports=("$TRITON_HTTP_PORT" "$TRITON_GRPC_PORT" "$TRITON_METRICS_PORT")
-lib::require_bool TRITON_OPENAI_FRONTEND
-if lib::is_truthy "$TRITON_OPENAI_FRONTEND"; then
-  lib::require_pos_int TRITON_OPENAI_PORT
-  _preflight_ports+=("$TRITON_OPENAI_PORT")
+_ports_free_fastpath=0
+if try_bind_fastpath "$TRITON_HOST" "${_preflight_ports[@]}"; then
+  _ports_free_fastpath=1
+  log "Bind check passed for all target ports; skipping /proc ownership scan."
+else
+  _rc=$?
+  if [[ "$_rc" == "2" ]]; then
+    log "Bind check indicates at least one port is in use; continuing with ownership scan."
+  else
+    die "Bind check failed: TRITON_HOST '$TRITON_HOST' is not bindable on this node." 1 "validation"
+  fi
 fi
-python3 - "$TRITON_HOST" "$EUID" "${_preflight_ports[@]}" <<'PY'
-import os, sys, socket, struct, time, signal, re, json
+
+# Run the preflight in Python, but do not let `set -e` short-circuit JSON output.
+_json_ok_file=""
+_json_tmp=""
+
+if [[ "$_ports_free_fastpath" == "1" ]]; then
+  if [[ "$TRITON_PREFLIGHT_JSON" == "1" ]]; then
+    _json_ok_file=$(mktemp)
+    printf '{"status":"ok","action":"noop","ports":' >"$_json_ok_file"
+    json_ports_array "${_preflight_ports[@]}" >>"$_json_ok_file"
+    printf '}\n' >>"$_json_ok_file"
+  fi
+else
+  _py_stdout="/dev/stdout"
+  if [[ "$TRITON_PREFLIGHT_JSON" == "1" ]]; then
+    _json_tmp=$(mktemp)
+    _py_stdout="$_json_tmp"
+  fi
+
+  if python3 - "$TRITON_HOST" "$EUID" "${_preflight_ports[@]}" >"$_py_stdout" <<'PY'
+import os, sys, socket, struct, time, signal, re, json, subprocess, shutil
 from collections import defaultdict
 
 host = sys.argv[1]
@@ -130,6 +594,7 @@ ports = [int(a) for a in sys.argv[3:]]
 
 allow_kill_other_uid = os.environ.get("TRITON_ALLOW_KILL_OTHER_UID", "0") == "1"
 dry_run = os.environ.get("TRITON_DRY_RUN", "0") == "1"
+check_only = os.environ.get("TRITON_CHECK_ONLY", "0") == "1"
 term_grace = float(os.environ.get("TRITON_TERM_GRACE", "3"))
 free_timeout = float(os.environ.get("TRITON_PORT_FREE_TIMEOUT", "10"))
 want_json = os.environ.get("TRITON_PREFLIGHT_JSON", "0") == "1"
@@ -140,12 +605,23 @@ if owner_regex:
     try:
         owner_re = re.compile(owner_regex, re.IGNORECASE)
     except re.error as e:
-        print(f"ERROR: Invalid TRITON_OWNER_REGEX: {e}", file=sys.stderr)
+        msg = f"Invalid TRITON_OWNER_REGEX: {e}"
+        print(f"ERROR: {msg}", file=sys.stderr)
+        if want_json:
+            print(json.dumps({"status":"error","code":1,"stage":"validation","message":msg}, separators=(",", ":")))
         sys.exit(1)
 
 def emit(obj):
     if want_json:
         print(json.dumps(obj, separators=(",", ":")))
+
+def die(code: int, message: str, stage: str = "port_preflight", **fields):
+    print(f"ERROR: {message}", file=sys.stderr)
+    if want_json:
+        out = {"status":"error","code":code,"stage":stage,"message":message}
+        out.update(fields)
+        print(json.dumps(out, separators=(",", ":")))
+    sys.exit(code)
 
 def read_int(path, default=0):
     try:
@@ -181,6 +657,25 @@ def parse_proc_net(path: str):
     except FileNotFoundError:
         return
 
+# --- address/port matching ---
+
+def host_kind(h: str) -> str:
+    if h in ("", "0.0.0.0"):
+        return "v4_wild"
+    if h == "::":
+        return "v6_wild"
+    try:
+        socket.inet_pton(socket.AF_INET, h)
+        return "v4"
+    except OSError:
+        pass
+    try:
+        socket.inet_pton(socket.AF_INET6, h)
+        return "v6"
+    except OSError:
+        pass
+    return "name"
+
 def resolve_ips(h: str, p: int):
     if h in ("", "0.0.0.0", "::"):
         return [h]
@@ -202,36 +697,98 @@ def build_targets(h: str, p: int):
     v4_targets, v6_targets = set(), set()
     for ip in ips:
         if ":" in ip:
-            try: v6_targets.add(f"{encode_ipv6(ip)}:{port_hex}")
-            except OSError: pass
+            try:
+                v6_targets.add(f"{encode_ipv6(ip)}:{port_hex}")
+            except OSError:
+                pass
         else:
-            try: v4_targets.add(f"{encode_ipv4(ip)}:{port_hex}")
-            except OSError: pass
+            try:
+                v4_targets.add(f"{encode_ipv4(ip)}:{port_hex}")
+            except OSError:
+                pass
+
+    # A wildcard listener always conflicts with a specific bind.
     v4_targets.add(f"{encode_ipv4('0.0.0.0')}:{port_hex}")
+
+    # An IPv6 wildcard can conflict with v4 binds if bindv6only==0.
     if has_v6 or bindv6only == 0:
         v6_targets.add(f"{encode_ipv6('::')}:{port_hex}")
+
     return v4_targets, v6_targets
 
-def find_listen_inodes_multi(h: str, port_list):
-    """Single pass: scan /proc/net/tcp{,6} for all ports simultaneously."""
-    all_v4 = {}  # target -> port
-    all_v6 = {}
-    for p in port_list:
-        v4t, v6t = build_targets(h, p)
-        for t in v4t: all_v4[t] = p
-        for t in v6t: all_v6[t] = p
+def build_matchers(h: str, port_list):
+    kind = host_kind(h)
 
-    # inode -> set of ports
-    inode_ports = defaultdict(set)
+    v4_map = {}  # exact local_addr -> port
+    v6_map = {}
+
+    port_hex_to_port = {f"{p:04X}": p for p in port_list}
+    any_v4_ports = set()  # match any v4 address on these ports
+    any_v6_ports = set()  # match any v6 address on these ports
+
+    for p in port_list:
+        ph = f"{p:04X}"
+        if kind == "v4_wild":
+            any_v4_ports.add(ph)
+            # Only an IPv6 wildcard conflicts with a v4 wildcard when bindv6only==0.
+            if bindv6only == 0:
+                v6_map[f"{encode_ipv6('::')}:{ph}"] = p
+        elif kind == "v6_wild":
+            any_v6_ports.add(ph)
+            # An IPv6 wildcard also conflicts with v4 binds when bindv6only==0.
+            if bindv6only == 0:
+                any_v4_ports.add(ph)
+        else:
+            v4t, v6t = build_targets(h, p)
+            for t in v4t:
+                v4_map[t] = p
+            for t in v6t:
+                v6_map[t] = p
+
+    return kind, v4_map, v6_map, any_v4_ports, any_v6_ports, port_hex_to_port
+
+def local_port_hex(local_addr: str) -> str:
+    # local_addr is like '0100007F:1F40'
+    try:
+        return local_addr.split(":", 1)[1]
+    except Exception:
+        return ""
+
+def find_listen_inodes_multi(h: str, port_list):
+    kind, v4_map, v6_map, any_v4_ports, any_v6_ports, ph2p = build_matchers(h, port_list)
+
+    inode_ports = defaultdict(set)  # inode -> set(ports)
 
     for local_addr, state, inode in parse_proc_net("/proc/net/tcp"):
-        if state == "0A" and local_addr in all_v4:
-            inode_ports[inode].add(all_v4[local_addr])
+        if state != "0A":
+            continue
+        if local_addr in v4_map:
+            inode_ports[inode].add(v4_map[local_addr])
+            continue
+        if any_v4_ports:
+            ph = local_port_hex(local_addr)
+            if ph in any_v4_ports:
+                inode_ports[inode].add(ph2p[ph])
+
     for local_addr, state, inode in parse_proc_net("/proc/net/tcp6"):
-        if state == "0A" and local_addr in all_v6:
-            inode_ports[inode].add(all_v6[local_addr])
+        if state != "0A":
+            continue
+        if local_addr in v6_map:
+            inode_ports[inode].add(v6_map[local_addr])
+            continue
+        if any_v6_ports:
+            ph = local_port_hex(local_addr)
+            if ph in any_v6_ports:
+                inode_ports[inode].add(ph2p[ph])
 
     return inode_ports
+
+def ports_in_use(h: str, port_list):
+    inode_ports = find_listen_inodes_multi(h, port_list)
+    out = set()
+    for ps in inode_ports.values():
+        out.update(ps)
+    return out
 
 def inode_to_pids(inodes):
     want = set(inodes)
@@ -288,8 +845,24 @@ def read_uid(pid: int):
         return None
     return None
 
+def read_starttime(pid: int):
+    # Return /proc/<pid>/stat starttime (jiffies) if readable.
+    # Guard against PID reuse: if starttime changes, PID was reused.
+    try:
+        with open(f"/proc/{pid}/stat", "r") as f:
+            s = f.read()
+        r = s.rfind(")")
+        if r == -1:
+            return None
+        fields = s[r+2:].split()
+        if len(fields) < 20:
+            return None
+        return int(fields[19])
+    except Exception:
+        return None
+
+
 def default_is_triton(cmd: str, exe: str) -> bool:
-    """Heuristic: match tritonserver or openai_frontend in cmdline or exe."""
     s = (cmd + " " + exe).lower()
     return "tritonserver" in s or "openai_frontend" in s
 
@@ -353,80 +926,239 @@ def is_alive(pid: int) -> bool:
         return False
     return not pid_is_dead(pid)
 
-def kill_pids_tree(roots):
+def kill_pids_tree(roots, expected_starttimes=None):
+    # Kill a process tree rooted at `roots`.
+    # Hardens against PID reuse by snapshotting /proc/<pid>/stat starttime and
+    # re-checking it immediately before signaling.
+    # Returns True if PID reuse was detected.
+
+    reuse_detected = False
+    exp = expected_starttimes or {}
+
+    safe_roots = []
+    for pid in roots:
+        st0 = exp.get(pid)
+        st_now = read_starttime(pid)
+        if st0 is not None and st_now is not None and st_now != st0:
+            print(f"WARNING: PID reuse detected for root PID {pid} (starttime changed); refusing to signal it.", file=sys.stderr)
+            reuse_detected = True
+            continue
+        safe_roots.append(pid)
+
+    if not safe_roots:
+        return True
+
     children = build_children_map()
-    targets = postorder_iter(children, roots)
+    targets = postorder_iter(children, safe_roots)
+
+    # Snapshot starttimes for all targets at traversal time.
+    snap = {pid: read_starttime(pid) for pid in targets}
+
+    def safe_signal(pid: int, sig: int):
+        nonlocal reuse_detected
+        st0 = snap.get(pid)
+        st_now = read_starttime(pid)
+        if st0 is not None and st_now is not None and st_now != st0:
+            reuse_detected = True
+            return
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
     for pid in targets:
-        try: os.kill(pid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError): pass
+        safe_signal(pid, signal.SIGTERM)
 
     deadline = time.time() + term_grace
     while time.time() < deadline:
-        if not any(is_alive(pid) for pid in targets):
-            return
+        alive = False
+        for pid in targets:
+            st0 = snap.get(pid)
+            st_now = read_starttime(pid)
+            if st0 is not None and st_now is not None and st_now != st0:
+                reuse_detected = True
+                continue
+            if is_alive(pid):
+                alive = True
+                break
+        if not alive:
+            return reuse_detected
         time.sleep(0.1)
 
     for pid in targets:
-        try: os.kill(pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError): pass
+        safe_signal(pid, signal.SIGKILL)
 
-def any_port_listening(h: str, port_list) -> list:
-    """Return list of ports that still have listeners."""
-    still = []
-    for p in port_list:
-        v4t, v6t = build_targets(h, p)
-        found = False
-        for la, st, _ in parse_proc_net("/proc/net/tcp"):
-            if st == "0A" and la in v4t:
-                found = True; break
-        if not found:
-            for la, st, _ in parse_proc_net("/proc/net/tcp6"):
-                if st == "0A" and la in v6t:
-                    found = True; break
-        if found:
-            still.append(p)
-    return still
+    return reuse_detected
+
+
+# --- Optional fast path: ss (avoids /proc/*/fd scans on large hosts) ---
+
+_SS_PID_RE = re.compile(r"pid=(\d+)")
+
+def _ss_parse_local(local: str):
+    local = local.strip()
+    if local.startswith("[") and "]:" in local:
+        ip, port = local.rsplit(":", 1)
+        ip = ip[1:-1]
+        return ip, port
+    if ":" in local:
+        ip, port = local.rsplit(":", 1)
+        return ip, port
+    return local, ""
+
+def try_ss_pid_ports(h: str, port_list):
+    # Return pid->ports mapping using `ss -Hlnpt` if available and complete.
+    # Returns defaultdict(set) (possibly empty) on success; None if unavailable/incomplete.
+
+    if shutil.which("ss") is None:
+        return None
+
+    filt = " or ".join([f"sport = :{p}" for p in port_list])
+
+    kind = host_kind(h)
+    resolved_cache = {}
+
+    def resolved_ips(p: int):
+        if p not in resolved_cache:
+            resolved_cache[p] = resolve_ips(h, p)
+        return resolved_cache[p]
+
+    def conflicts(ip: str, is_v6: bool, p: int) -> bool:
+        ip = ip.strip()
+        if ip == "*" or ip == "":
+            ip = "::" if is_v6 else "0.0.0.0"
+
+        if kind == "v4_wild":
+            if not is_v6:
+                return True
+            return (bindv6only == 0) and (ip in ("::", "*"))
+
+        if kind == "v6_wild":
+            if is_v6:
+                return True
+            return bindv6only == 0
+
+        ips = resolved_ips(p)
+        if is_v6:
+            allowed = [x for x in ips if ":" in x]
+            return ip in ("::", "*") or ip in allowed
+        else:
+            allowed = [x for x in ips if ":" not in x]
+            return ip in ("0.0.0.0", "*") or ip in allowed
+
+    pid_ports = defaultdict(set)
+    seen_ports = set()
+    missing_pid_ports = set()
+
+    for fam_flag, is_v6 in (("-4", False), ("-6", True)):
+        try:
+            out = subprocess.check_output(["ss", "-Hlnpt", fam_flag, filt], text=True, stderr=subprocess.DEVNULL)
+        except Exception:
+            continue
+
+        for line in out.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            local = parts[3]
+            ip, port_s = _ss_parse_local(local)
+            if not port_s.isdigit():
+                continue
+            pnum = int(port_s)
+            if pnum not in port_list:
+                continue
+            if not conflicts(ip, is_v6, pnum):
+                continue
+
+            seen_ports.add(pnum)
+
+            pids = _SS_PID_RE.findall(line)
+            if not pids:
+                missing_pid_ports.add(pnum)
+                continue
+            for pid_s in pids:
+                try:
+                    pid_ports[int(pid_s)].add(pnum)
+                except ValueError:
+                    continue
+
+    if not seen_ports:
+        return defaultdict(set)
+
+    if missing_pid_ports:
+        return None
+
+    return pid_ports
 
 # --- Main flow ---
 
-# Single-pass multi-port scan
-inode_ports = find_listen_inodes_multi(host, ports)
+pid_ports = try_ss_pid_ports(host, ports)
 
-if not inode_ports:
-    emit({"status": "ok", "action": "noop", "dry_run": dry_run, "ports": ports})
-    sys.exit(0)
+if pid_ports is not None:
+    # Fast path succeeded (may be empty).
+    if not pid_ports:
+        emit({"status": "ok", "action": "noop", "dry_run": dry_run, "ports": ports})
+        sys.exit(0)
+else:
+    # Fallback: /proc-based scan + inode->PID attribution.
+    inode_ports = find_listen_inodes_multi(host, ports)
 
-mapping, unmapped = inode_to_pids(set(inode_ports.keys()))
+    if not inode_ports:
+        emit({"status": "ok", "action": "noop", "dry_run": dry_run, "ports": ports})
+        sys.exit(0)
 
-if unmapped:
-    unmapped_ports = set()
-    for ino in unmapped:
-        unmapped_ports.update(inode_ports.get(ino, set()))
-    print(f"ERROR: Found listener(s) on {host} ports {sorted(unmapped_ports)} but could not map inode(s) to PID(s): {', '.join(sorted(unmapped))}", file=sys.stderr)
-    print("  Your system may restrict /proc/<pid>/fd visibility.", file=sys.stderr)
-    sys.exit(4)
+    mapping, unmapped = inode_to_pids(set(inode_ports.keys()))
 
-# Build unified PID set with port associations
-pid_ports = defaultdict(set)  # pid -> set of ports
-for ino, pid_set in mapping.items():
-    for pid in pid_set:
-        pid_ports[pid].update(inode_ports.get(ino, set()))
+    if unmapped:
+        # Race hardening: rescan ports before declaring "unattributable".
+        still = ports_in_use(host, ports)
+        if not still:
+            emit({"status": "ok", "action": "noop", "dry_run": dry_run, "ports": ports})
+            sys.exit(0)
+
+        unmapped_ports = set()
+        for ino in unmapped:
+            unmapped_ports.update(inode_ports.get(ino, set()))
+
+        if not (unmapped_ports & still):
+            for ino in list(unmapped):
+                inode_ports.pop(ino, None)
+            mapping = {k: v for k, v in mapping.items() if k in inode_ports}
+        else:
+            die(4,
+                f"Found listener(s) on {host} ports {sorted(unmapped_ports & still)} but could not map inode(s) to PID(s): {', '.join(sorted(unmapped))}. Your system may restrict /proc/<pid>/fd visibility.",
+                stage="port_preflight",
+                ports=sorted(still),
+                inodes=sorted(unmapped))
+
+    # Build unified PID set with port associations
+    pid_ports = defaultdict(set)  # pid -> set of ports
+    for ino, pid_set in mapping.items():
+        for pid in pid_set:
+            pid_ports[pid].update(inode_ports.get(ino, set()))
+
+    if not pid_ports:
+        die(4, f"Found listener(s) on {host} but could not identify any owner PID.", ports=sorted(ports_in_use(host, ports)))
 
 pids = sorted(pid_ports.keys())
 if not pids:
-    print(f"ERROR: Found listener(s) on {host} but could not identify any owner PID.", file=sys.stderr)
-    sys.exit(4)
+    die(4, f"Found listener(s) on {host} but could not identify any owner PID.", ports=sorted(ports_in_use(host, ports)))
 
 # Classify PIDs
 pid_info = []
 triton_pids = []
 non_triton = []
+pid_start = {}
+
 
 for pid in pids:
     cmd = read_cmdline(pid)
     exe = read_exe(pid)
     uid = read_uid(pid)
     comm = read_comm(pid)
+    pid_start[pid] = read_starttime(pid)
     pid_ports_str = ",".join(str(p) for p in sorted(pid_ports[pid]))
     pid_info.append((pid, uid, comm, exe, cmd, pid_ports_str))
     if is_triton(cmd, exe):
@@ -434,8 +1166,8 @@ for pid in pids:
     else:
         non_triton.append(pid)
 
+# If any non-triton processes own any port, we never kill them.
 if non_triton:
-    # Check if some ports are Triton and some are not
     triton_port_set = set()
     non_triton_port_set = set()
     for pid, uid, comm, exe, cmd, pp in pid_info:
@@ -445,116 +1177,249 @@ if non_triton:
         else:
             non_triton_port_set.update(pp_set)
 
-    blocked_ports = non_triton_port_set - triton_port_set
-    if not blocked_ports:
-        print(f"WARNING: Mixed triton/non-triton processes on shared ports. Will stop triton only.", file=sys.stderr)
-    if blocked_ports:
-        print(f"ERROR: Port(s) {sorted(blocked_ports)} in use by non-Triton process(es). Refusing to kill.", file=sys.stderr)
-        for pid, uid, comm, exe, cmd, pp in pid_info:
-            tag = "triton" if pid in triton_pids else "non-triton"
-            print(f"  PID {pid} (uid {uid}) ports={pp} comm={comm} [{tag}] {cmd}", file=sys.stderr)
+    # Ports that can become free by stopping Triton (i.e., not also owned by non-triton).
+    reclaimable_ports = triton_port_set - non_triton_port_set
 
-        # If some ports were reclaimable but others blocked: exit 6
-        if triton_pids:
+    print(f"ERROR: Port(s) {sorted(non_triton_port_set)} in use by non-Triton process(es). Refusing to kill those processes.", file=sys.stderr)
+    for pid, uid, comm, exe, cmd, pp in pid_info:
+        tag = "triton" if pid in triton_pids else "non-triton"
+        print(f"  PID {pid} (uid {uid}) ports={pp} comm={comm} [{tag}] {cmd}", file=sys.stderr)
+
+    if not reclaimable_ports or not triton_pids:
+        die(2,
+            "Non-Triton listener(s) block required ports; nothing reclaimable.",
+            stage="port_preflight",
+            ports_blocked=sorted(non_triton_port_set),
+            ports_reclaimable=sorted(reclaimable_ports),
+            pids_triton=triton_pids,
+            pids_non_triton=non_triton)
+
+    # We can reclaim some ports by stopping Triton, but other ports remain blocked.
+    if dry_run and not check_only:
+        print(f"DRY-RUN: Would stop Triton PID(s): {', '.join(map(str, triton_pids))} to reclaim ports {sorted(reclaimable_ports)}", file=sys.stderr)
+        emit({"status": "ok", "action": "would_stop_partial", "dry_run": True, "pids": triton_pids,
+              "ports_reclaimable": sorted(reclaimable_ports), "ports_blocked": sorted(non_triton_port_set)})
+        sys.exit(0)
+
+    bad_uid = [(pid, uid, comm, exe, cmd, pp) for pid, uid, comm, exe, cmd, pp in pid_info
+               if pid in triton_pids and uid is not None and uid != euid]
+    if bad_uid and not allow_kill_other_uid:
+        print("ERROR: Triton listener(s) belong to a different UID. Refusing to kill.", file=sys.stderr)
+        for pid, uid, comm, exe, cmd, pp in bad_uid:
+            print(f"  PID {pid} (uid {uid}) ports={pp} comm={comm} {cmd}", file=sys.stderr)
+        print("  Set TRITON_ALLOW_KILL_OTHER_UID=1 to override.", file=sys.stderr)
+        die(3, "Triton belongs to different UID; blocked.", stage="port_preflight", pids=triton_pids)
+
+    
+    if check_only:
+        die(6,
+            "Non-Triton listener(s) block required ports; Triton also owns some ports. Check-only mode: would stop Triton to reclaim reclaimable ports, but other ports remain blocked.",
+            stage="port_preflight",
+            ports_blocked=sorted(non_triton_port_set),
+            ports_reclaimable=sorted(reclaimable_ports),
+            pids_triton=triton_pids,
+            pids_non_triton=non_triton)
+    print(f"Stopping Triton process tree(s) to reclaim ports {sorted(reclaimable_ports)}...", file=sys.stderr)
+    reuse = kill_pids_tree(triton_pids, expected_starttimes=pid_start)
+    if reuse:
+        die(4, "PID reuse detected while attempting to stop Triton; refusing to proceed. Re-run preflight.", stage="port_preflight", pids=triton_pids)
+
+    deadline = time.time() + free_timeout
+    while time.time() < deadline:
+        still_reclaim = ports_in_use(host, list(reclaimable_ports))
+        if not still_reclaim:
+            emit({"status": "ok", "action": "stopped_partial", "dry_run": False,
+                  "pids": triton_pids, "ports_reclaimed": sorted(reclaimable_ports),
+                  "ports_blocked": sorted(non_triton_port_set)})
             sys.exit(6)
-        sys.exit(2)
+        time.sleep(0.5)
+
+    still_reclaim = ports_in_use(host, list(reclaimable_ports))
+    die(5,
+        f"Attempted to stop Triton but reclaimable port(s) {sorted(still_reclaim)} still listening.",
+        stage="port_preflight",
+        ports_reclaimable=sorted(reclaimable_ports),
+        ports_still_listening=sorted(still_reclaim),
+        ports_blocked=sorted(non_triton_port_set),
+        pids_triton=triton_pids,
+        pids_non_triton=non_triton)
+
+# No non-triton owners; safe to proceed against Triton only.
 
 bad_uid = [(pid, uid, comm, exe, cmd, pp) for pid, uid, comm, exe, cmd, pp in pid_info
            if pid in triton_pids and uid is not None and uid != euid]
 if bad_uid and not allow_kill_other_uid:
-    print(f"ERROR: Triton listener(s) belong to a different UID. Refusing to kill.", file=sys.stderr)
+    print("ERROR: Triton listener(s) belong to a different UID. Refusing to kill.", file=sys.stderr)
     for pid, uid, comm, exe, cmd, pp in bad_uid:
         print(f"  PID {pid} (uid {uid}) ports={pp} comm={comm} {cmd}", file=sys.stderr)
     print("  Set TRITON_ALLOW_KILL_OTHER_UID=1 to override.", file=sys.stderr)
-    sys.exit(3)
+    die(3, "Triton belongs to different UID; blocked.", stage="port_preflight", pids=triton_pids)
 
-if dry_run:
-    print(f"DRY-RUN: Ports {sorted(set().union(*(pid_ports[p] for p in triton_pids)))} owned by Triton PID(s): {', '.join(map(str, triton_pids))}", file=sys.stderr)
+if dry_run and not check_only:
+    triton_port_set = set()
+    for pid in triton_pids:
+        triton_port_set.update(pid_ports[pid])
+    print(f"DRY-RUN: Ports {sorted(triton_port_set)} owned by Triton PID(s): {', '.join(map(str, triton_pids))}", file=sys.stderr)
     for pid, uid, comm, exe, cmd, pp in pid_info:
         if pid in triton_pids:
             print(f"  PID {pid} (uid {uid}) ports={pp} comm={comm} {cmd}", file=sys.stderr)
-    emit({"status": "ok", "action": "would_stop", "dry_run": True, "pids": triton_pids})
+    emit({"status": "ok", "action": "would_stop", "dry_run": True, "pids": triton_pids, "ports": sorted(triton_port_set)})
     sys.exit(0)
 
 triton_port_set = set()
 for pid in triton_pids:
     triton_port_set.update(pid_ports[pid])
+
 print(f"Ports {sorted(triton_port_set)} owned by Triton PID(s): {', '.join(map(str, triton_pids))}", file=sys.stderr)
+
+if check_only:
+    print("CHECK-ONLY: Triton owns required port(s); not sending signals.", file=sys.stderr)
+    emit({"status": "ok", "action": "check_only_triton", "check_only": True, "pids": triton_pids, "ports": sorted(triton_port_set)})
+    sys.exit(0)
+
 print("Stopping Triton process tree(s)...", file=sys.stderr)
 
-kill_pids_tree(triton_pids)
+reuse = kill_pids_tree(triton_pids, expected_starttimes=pid_start)
+if reuse:
+    die(4, "PID reuse detected while attempting to stop Triton; refusing to proceed. Re-run preflight.", stage="port_preflight", pids=triton_pids)
 
-# Wait for ports to free
 deadline = time.time() + free_timeout
 while time.time() < deadline:
-    still = any_port_listening(host, list(triton_port_set))
+    still = ports_in_use(host, list(triton_port_set))
     if not still:
         emit({"status": "ok", "action": "stopped", "dry_run": False, "pids": triton_pids, "ports": sorted(triton_port_set)})
         sys.exit(0)
     time.sleep(0.5)
 
-still = any_port_listening(host, list(triton_port_set))
-print(f"ERROR: Port(s) {still} still listening after stop attempt.", file=sys.stderr)
-sys.exit(5)
+still = ports_in_use(host, list(triton_port_set))
+die(5, f"Port(s) {sorted(still)} still listening after stop attempt.", stage="port_preflight", ports_still_listening=sorted(still), pids=triton_pids)
 PY
+  then
+    if [[ "$TRITON_PREFLIGHT_JSON" == "1" ]]; then
+      _json_ok_file="$_json_tmp"
+    fi
+  else
+    rc=$?
+    if [[ "$TRITON_PREFLIGHT_JSON" == "1" ]]; then
+      cat "$_json_tmp" 2>/dev/null || true
+    fi
+    exit "$rc"
+  fi
+fi
 
 # --- GPU health check ---
 
 if [[ "$TRITON_SKIP_GPU_CHECK" != "1" ]]; then
   if python3 -c "import torch" >/dev/null 2>&1; then
-    python3 - "$TRITON_GPU_WARN_PCT" <<'PY'
-import sys, torch
-warn_pct = float(sys.argv[1])
+    if python3 - "$TRITON_GPU_WARN_PCT" <<'PY'
+import sys, json, os
 
-if not torch.cuda.is_available():
-    print("ERROR: No CUDA GPUs available.", file=sys.stderr)
-    sys.exit(1)
-
-n = torch.cuda.device_count()
-for i in range(n):
-    props = torch.cuda.get_device_properties(i)
-    total = props.total_memory
-    free, _ = torch.cuda.mem_get_info(i)
-    used_pct = (total - free) / total * 100.0
-    print(f"GPU {i}: {props.name} -- {free // 1048576}MiB free / {total // 1048576}MiB total ({used_pct:.0f}% used)", file=sys.stderr)
-    if used_pct > warn_pct:
-        print(f"WARNING: GPU {i} memory is {used_pct:.0f}% consumed before Triton starts.", file=sys.stderr)
-PY
-  else
-    if command -v nvidia-smi >/dev/null 2>&1; then
-      python3 - "$TRITON_GPU_WARN_PCT" <<'PY'
-import subprocess, sys
 warn_pct = float(sys.argv[1])
+want_json = (os.environ.get("TRITON_PREFLIGHT_JSON", "0") == "1")
+
+def emit_error(message: str):
+    if want_json:
+        print(json.dumps({"status":"error","code":1,"stage":"gpu_check","message":message}, separators=(",", ":")))
 
 try:
-    out = subprocess.check_output(
-        ["nvidia-smi", "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"],
-        text=True, stderr=subprocess.STDOUT,
-    )
-except Exception as e:
-    print(f"WARNING: GPU check skipped (torch unavailable; nvidia-smi failed: {e})", file=sys.stderr)
-    sys.exit(0)
+    import torch
 
-for idx, line in enumerate(out.strip().splitlines()):
-    parts = [p.strip() for p in line.rsplit(",", 2)]
-    if len(parts) != 3:
-        print(f"WARNING: Unexpected nvidia-smi output line: {line}", file=sys.stderr)
-        continue
-    name, total, free = parts
-    total = float(total); free = float(free)
-    used_pct = (total - free) / total * 100.0 if total > 0 else 0.0
-    print(f"GPU {idx}: {name} -- {int(free)}MiB free / {int(total)}MiB total ({used_pct:.0f}% used)", file=sys.stderr)
-    if used_pct > warn_pct:
-        print(f"WARNING: GPU {idx} memory is {used_pct:.0f}% consumed before Triton starts.", file=sys.stderr)
+    if not torch.cuda.is_available():
+        print("ERROR: No CUDA GPUs available.", file=sys.stderr)
+        emit_error("No CUDA GPUs available")
+        sys.exit(1)
+
+    n = torch.cuda.device_count()
+    for i in range(n):
+        props = torch.cuda.get_device_properties(i)
+        total = props.total_memory
+        free, _ = torch.cuda.mem_get_info(i)
+        used_pct = (total - free) / total * 100.0 if total > 0 else 0.0
+        print(f"GPU {i}: {props.name} -- {free // 1048576}MiB free / {total // 1048576}MiB total ({used_pct:.0f}% used)", file=sys.stderr)
+        if used_pct > warn_pct:
+            print(f"WARNING: GPU {i} memory is {used_pct:.0f}% consumed before Triton starts.", file=sys.stderr)
+except Exception as e:
+    msg = f"GPU check exception: {e}"
+    print(f"ERROR: {msg}", file=sys.stderr)
+    emit_error(msg)
+    sys.exit(1)
 PY
+    then
+      :
     else
-      lib::warn "GPU check skipped (torch unavailable and nvidia-smi not found)."
+      exit $?
+    fi
+  else
+    if command -v nvidia-smi >/dev/null 2>&1; then
+      if python3 - "$TRITON_GPU_WARN_PCT" <<'PY'
+import subprocess, sys, json, os
+warn_pct = float(sys.argv[1])
+want_json = (os.environ.get("TRITON_PREFLIGHT_JSON", "0") == "1")
+
+def emit_error(message: str):
+    if want_json:
+        print(json.dumps({"status":"error","code":1,"stage":"gpu_check","message":message}, separators=(",", ":")))
+
+try:
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"],
+            text=True, stderr=subprocess.STDOUT,
+        )
+    except Exception as e:
+        # Best-effort fallback: skip GPU check if nvidia-smi isn't usable.
+        print(f"WARNING: GPU check skipped (torch unavailable; nvidia-smi failed: {e})", file=sys.stderr)
+        sys.exit(0)
+
+    for idx, line in enumerate(out.strip().splitlines()):
+        parts = [p.strip() for p in line.rsplit(",", 2)]
+        if len(parts) != 3:
+            print(f"WARNING: Unexpected nvidia-smi output line: {line}", file=sys.stderr)
+            continue
+        name, total, free = parts
+        total = float(total); free = float(free)
+        used_pct = (total - free) / total * 100.0 if total > 0 else 0.0
+        print(f"GPU {idx}: {name} -- {int(free)}MiB free / {int(total)}MiB total ({used_pct:.0f}% used)", file=sys.stderr)
+        if used_pct > warn_pct:
+            print(f"WARNING: GPU {idx} memory is {used_pct:.0f}% consumed before Triton starts.", file=sys.stderr)
+except Exception as e:
+    # Treat unexpected issues as a hard failure, but emit one JSON object when requested.
+    msg = f"GPU check exception (nvidia-smi): {e}"
+    print(f"ERROR: {msg}", file=sys.stderr)
+    emit_error(msg)
+    sys.exit(1)
+PY
+      then
+        :
+      else
+        exit $?
+      fi
+    else
+      warn "GPU check skipped (torch unavailable and nvidia-smi not found)."
     fi
   fi
 fi
 
 # --- Run downstream command if provided ---
 
+# --- Finalize / downstream ---
+
+if [[ "$TRITON_CHECK_ONLY" == "1" ]]; then
+  log "CHECK-ONLY: completed validations; not executing downstream."
+  if [[ "$TRITON_PREFLIGHT_JSON" == "1" && -n "${_json_ok_file:-}" ]]; then
+    cat "$_json_ok_file" 2>/dev/null || true
+  fi
+  exit 0
+fi
+
 if [[ ${#_downstream[@]} -gt 0 ]]; then
+  if [[ "$TRITON_LOCK_SCOPE" == "preflight" ]]; then
+    # Release the lock before handing off to the downstream process.
+    exec 9>&- || true
+  fi
   exec "${_downstream[@]}"
+fi
+
+if [[ "$TRITON_PREFLIGHT_JSON" == "1" && -n "${_json_ok_file:-}" ]]; then
+  cat "$_json_ok_file" 2>/dev/null || true
 fi
