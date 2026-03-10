@@ -34,15 +34,24 @@
         ]
       },
       "triton-onnxruntime-backend": {
-        "store-path": "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0",
-        "priority": 11
+        "pkg-path": "meetrlyio/triton-onnxruntime-backend",
+        "priority": 11,
+        "systems": [
+          "x86_64-linux"
+        ]
       },
       "triton-python-backend": {
-        "store-path": "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0",
-        "priority": 10
+        "pkg-path": "meetrlyio/triton-python-backend",
+        "priority": 10,
+        "systems": [
+          "x86_64-linux"
+        ]
       },
       "triton-server": {
-        "store-path": "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0"
+        "pkg-path": "meetrlyio/triton-server",
+        "systems": [
+          "x86_64-linux"
+        ]
       },
       "vllm": {
         "pkg-path": "flox-cuda/python3Packages.vllm",
@@ -57,78 +66,6 @@
     "options": {}
   },
   "packages": [
-    {
-      "install_id": "triton-onnxruntime-backend",
-      "store_path": "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0",
-      "system": "aarch64-darwin",
-      "priority": 11
-    },
-    {
-      "install_id": "triton-onnxruntime-backend",
-      "store_path": "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0",
-      "system": "aarch64-linux",
-      "priority": 11
-    },
-    {
-      "install_id": "triton-onnxruntime-backend",
-      "store_path": "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0",
-      "system": "x86_64-darwin",
-      "priority": 11
-    },
-    {
-      "install_id": "triton-onnxruntime-backend",
-      "store_path": "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0",
-      "system": "x86_64-linux",
-      "priority": 11
-    },
-    {
-      "install_id": "triton-python-backend",
-      "store_path": "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0",
-      "system": "aarch64-darwin",
-      "priority": 10
-    },
-    {
-      "install_id": "triton-python-backend",
-      "store_path": "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0",
-      "system": "aarch64-linux",
-      "priority": 10
-    },
-    {
-      "install_id": "triton-python-backend",
-      "store_path": "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0",
-      "system": "x86_64-darwin",
-      "priority": 10
-    },
-    {
-      "install_id": "triton-python-backend",
-      "store_path": "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0",
-      "system": "x86_64-linux",
-      "priority": 10
-    },
-    {
-      "install_id": "triton-server",
-      "store_path": "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0",
-      "system": "aarch64-darwin",
-      "priority": 5
-    },
-    {
-      "install_id": "triton-server",
-      "store_path": "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0",
-      "system": "aarch64-linux",
-      "priority": 5
-    },
-    {
-      "install_id": "triton-server",
-      "store_path": "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0",
-      "system": "x86_64-darwin",
-      "priority": 5
-    },
-    {
-      "install_id": "triton-server",
-      "store_path": "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0",
-      "system": "x86_64-linux",
-      "priority": 5
-    },
     {
       "attr_path": "python3Packages.numpy",
       "broken": false,
@@ -196,19 +133,21 @@
     {
       "attr_path": "bats",
       "broken": false,
-      "derivation": "/nix/store/f1c2vb6vmq2nw5hdq44gs2bbjggv15r3-bats-1.12.0.drv",
+      "derivation": "/nix/store/4hhr10dl68mcssazw8w73zj2znfxabgz-bats-1.12.0.drv",
       "description": "Bash Automated Testing System",
       "install_id": "bats",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "bats-1.12.0",
       "pname": "bats",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T04:39:37.004627Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T04:46:01.570753Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "1.12.0",
@@ -225,19 +164,21 @@
     {
       "attr_path": "bats",
       "broken": false,
-      "derivation": "/nix/store/pk6jhzndqv547vy5j40mfjxfxsdf8qjz-bats-1.12.0.drv",
+      "derivation": "/nix/store/hz51xfzg01y472h22zh9yd6bfvn4sz13-bats-1.12.0.drv",
       "description": "Bash Automated Testing System",
       "install_id": "bats",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "bats-1.12.0",
       "pname": "bats",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T05:09:48.426361Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T05:24:01.020869Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "1.12.0",
@@ -254,19 +195,21 @@
     {
       "attr_path": "bats",
       "broken": false,
-      "derivation": "/nix/store/vgk203aq02hydb6fy110sa3rk76258lk-bats-1.12.0.drv",
+      "derivation": "/nix/store/x6fgn467ikxc3yjsqbkbzabdz1nbj67i-bats-1.12.0.drv",
       "description": "Bash Automated Testing System",
       "install_id": "bats",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "bats-1.12.0",
       "pname": "bats",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T05:38:32.020678Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T06:09:08.191550Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "1.12.0",
@@ -283,19 +226,21 @@
     {
       "attr_path": "bats",
       "broken": false,
-      "derivation": "/nix/store/63pyf2mnm90p7q2afhch9d3g7rbl69b4-bats-1.12.0.drv",
+      "derivation": "/nix/store/wbg18mal8bxxs8jd66nc5520h6gx96ia-bats-1.12.0.drv",
       "description": "Bash Automated Testing System",
       "install_id": "bats",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "bats-1.12.0",
       "pname": "bats",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T06:12:08.906673Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T07:00:09.561573Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "1.12.0",
@@ -312,19 +257,21 @@
     {
       "attr_path": "shellcheck",
       "broken": false,
-      "derivation": "/nix/store/vvizfnzchkkjp3smh19si78dd3l836w6-shellcheck-0.11.0.drv",
+      "derivation": "/nix/store/30l67f1yn1k5h7jbsy8xqcpbz3gxdv4q-shellcheck-0.11.0.drv",
       "description": "Shell script analysis tool",
       "install_id": "shellcheck",
       "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "shellcheck-0.11.0",
       "pname": "shellcheck",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T04:41:18.561717Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T04:47:45.820449Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "0.11.0",
@@ -346,19 +293,21 @@
     {
       "attr_path": "shellcheck",
       "broken": false,
-      "derivation": "/nix/store/cd2pd6fiy66a4l4pvnhj697rhba8c3g6-shellcheck-0.11.0.drv",
+      "derivation": "/nix/store/xr16fq1kqkks421ca08w620r6j1i11vm-shellcheck-0.11.0.drv",
       "description": "Shell script analysis tool",
       "install_id": "shellcheck",
       "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "shellcheck-0.11.0",
       "pname": "shellcheck",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T05:12:05.536633Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T05:26:15.278525Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "0.11.0",
@@ -380,19 +329,21 @@
     {
       "attr_path": "shellcheck",
       "broken": false,
-      "derivation": "/nix/store/b44n2vlwvr3l9g6fm75fsd2lb1ah2fgl-shellcheck-0.11.0.drv",
+      "derivation": "/nix/store/8fdhf7y1lmb0chwrcr0y89sicl9cqj79-shellcheck-0.11.0.drv",
       "description": "Shell script analysis tool",
       "install_id": "shellcheck",
       "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "shellcheck-0.11.0",
       "pname": "shellcheck",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T05:40:13.615115Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T06:10:52.416247Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "0.11.0",
@@ -414,19 +365,21 @@
     {
       "attr_path": "shellcheck",
       "broken": false,
-      "derivation": "/nix/store/47yscwbl83sgc52gs152bhnn9vdhqcqa-shellcheck-0.11.0.drv",
+      "derivation": "/nix/store/fn4akh4i4a51bbixvyqvrrzn54578k8v-shellcheck-0.11.0.drv",
       "description": "Shell script analysis tool",
       "install_id": "shellcheck",
       "license": "GPL-3.0-only",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=8c809a146a140c5c8806f13399592dbcb1bb5dc4",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
       "name": "shellcheck-0.11.0",
       "pname": "shellcheck",
-      "rev": "8c809a146a140c5c8806f13399592dbcb1bb5dc4",
-      "rev_count": 957538,
-      "rev_date": "2026-03-03T12:59:14Z",
-      "scrape_date": "2026-03-04T06:14:37.169879Z",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T07:02:37.987269Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging",
+        "stable"
       ],
       "unfree": false,
       "version": "0.11.0",
@@ -440,6 +393,99 @@
         "doc": "/nix/store/vprzjlx9a7f0pz9dx9kbpfzrn4imxnmi-shellcheck-0.11.0-doc",
         "man": "/nix/store/ac82h7mc2zdzn4cy0lkypfs9zdc0yc0c-shellcheck-0.11.0-man",
         "out": "/nix/store/9lmh68dxfi83ip9al0dpjjlmclb3gq1x-shellcheck-0.11.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "triton-onnxruntime-backend",
+      "broken": false,
+      "derivation": "/nix/store/p7vqbq7030byl02c317j1lydjsyqfasz-triton-onnxruntime-backend-2.66.0.drv",
+      "description": "ONNX Runtime backend for NVIDIA Triton Inference Server",
+      "install_id": "triton-onnxruntime-backend",
+      "license": "BSD-3-Clause",
+      "locked_url": "git@github.com:barstoolbluz/build-triton-server.git?rev=3fe4183645d01cfb6aa022eabbd880c2dc0c2218",
+      "name": "triton-onnxruntime-backend-2.66.0",
+      "pname": "triton-onnxruntime-backend",
+      "rev": "3fe4183645d01cfb6aa022eabbd880c2dc0c2218",
+      "rev_count": 11,
+      "rev_date": "2026-03-10T17:59:34Z",
+      "scrape_date": "2026-03-10T18:14:03.601865651Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "2.66.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/vyb9d87kjm7gzylgs4gxvxa96657hmww-triton-onnxruntime-backend-2.66.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 11
+    },
+    {
+      "attr_path": "triton-python-backend",
+      "broken": false,
+      "derivation": "/nix/store/angcz1as9kc3idgwv855wfj76vd31w3x-triton-python-backend-2.66.0.drv",
+      "description": "Python backend for NVIDIA Triton Inference Server",
+      "install_id": "triton-python-backend",
+      "license": "BSD-3-Clause",
+      "locked_url": "git@github.com:barstoolbluz/build-triton-server.git?rev=3fe4183645d01cfb6aa022eabbd880c2dc0c2218",
+      "name": "triton-python-backend-2.66.0",
+      "pname": "triton-python-backend",
+      "rev": "3fe4183645d01cfb6aa022eabbd880c2dc0c2218",
+      "rev_count": 11,
+      "rev_date": "2026-03-10T17:59:34Z",
+      "scrape_date": "2026-03-10T18:14:03.601867394Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "2.66.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/4csd8gslszjagsacrv1gmzhg5jqz3vgx-triton-python-backend-2.66.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 10
+    },
+    {
+      "attr_path": "triton-server",
+      "broken": false,
+      "derivation": "/nix/store/8kbc36c3p8pv1gxy00nv35ki37drj9bg-triton-server-2.66.0.drv",
+      "description": "NVIDIA Triton Inference Server",
+      "install_id": "triton-server",
+      "license": "BSD-3-Clause",
+      "locked_url": "git@github.com:barstoolbluz/build-triton-server.git?rev=3fe4183645d01cfb6aa022eabbd880c2dc0c2218",
+      "name": "triton-server-2.66.0",
+      "pname": "triton-server",
+      "rev": "3fe4183645d01cfb6aa022eabbd880c2dc0c2218",
+      "rev_count": 11,
+      "rev_date": "2026-03-10T17:59:34Z",
+      "scrape_date": "2026-03-10T18:14:03.601868165Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "2.66.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/s9fly3hvryakf8vlrqsq5piw5yml25ad-triton-server-2.66.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

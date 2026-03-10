@@ -15,10 +15,13 @@ version = 1
 ##  $ flox show gum     <- show all versions of a package
 ## -------------------------------------------------------------------
 [install]
-triton-server.store-path = "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0"
-triton-python-backend.store-path = "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0"
+triton-server.pkg-path = "meetrlyio/triton-server"
+triton-server.systems = ["x86_64-linux"]
+triton-python-backend.pkg-path = "meetrlyio/triton-python-backend"
+triton-python-backend.systems = ["x86_64-linux"]
 triton-python-backend.priority = 10
-triton-onnxruntime-backend.store-path = "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0"
+triton-onnxruntime-backend.pkg-path = "meetrlyio/triton-onnxruntime-backend"
+triton-onnxruntime-backend.systems = ["x86_64-linux"]
 triton-onnxruntime-backend.priority = 11
 shellcheck.pkg-path = "shellcheck"
 bats.pkg-path = "bats"
