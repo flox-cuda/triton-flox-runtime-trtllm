@@ -84,7 +84,7 @@ triton-preflight && triton-resolve-model && triton-serve
 │  Environment (.flox/env/manifest.toml)                    │
 │                                                          │
 │  [install]                                               │
-│    triton-server (store-path)   # server + scripts       │
+│    triton-server (meetrlyio)    # server + scripts       │
 │    triton-python-backend        # Python backend .so     │
 │    triton-onnxruntime-backend   # ONNX Runtime backend   │
 │    vllm, torch, numpy, ...      # Python ML packages     │
@@ -111,7 +111,7 @@ triton-preflight && triton-resolve-model && triton-serve
 2. **triton-resolve-model** -- Provisions the model repository from configured sources with per-model locking, staging directories, atomic swaps, and layout validation. Writes a per-model env file.
 3. **triton-serve** -- Loads the env file (safe or trusted mode), validates all required vars, and `exec`s either `tritonserver` (default) or `python3 main.py` (when `TRITON_OPENAI_FRONTEND=true`).
 
-Scripts are bundled in the `triton-server` Nix derivation at `$out/bin/` and available on `PATH` after `flox activate`.
+Scripts are bundled in the `triton-server` package at `$out/bin/` and available on `PATH` after `flox activate`.
 
 ## Model repository layout
 
@@ -202,7 +202,7 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 | `TRITON_ALLOW_HTTP` | `true` | Enable HTTP endpoint. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
 | `TRITON_ALLOW_GRPC` | `true` | Enable gRPC endpoint. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
 | `TRITON_ALLOW_METRICS` | `true` | Enable Prometheus metrics endpoint. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
-| `TRITON_BACKEND_DIR` | _(unset)_ | Backend library directory. When set, passed as `--backend-directory` to tritonserver. Must exist as a directory |
+| `TRITON_BACKEND_DIR` | _(set by on-activate hook)_ | Backend library directory. Automatically set to `$FLOX_ENV_CACHE/backends` by the `triton-setup-backends` hook. Passed as `--backend-directory` to tritonserver. Must exist as a directory |
 | `TRITON_BACKEND_CONFIG` | _(unset)_ | Comma-separated backend configs. Format: `backend:key=val,backend:key=val` |
 
 ### OpenAI frontend settings
@@ -677,18 +677,18 @@ TRITON_MODEL_CONTROL_MODE=poll flox activate --start-services
 To restart with a different model:
 
 ```bash
-flox services restart triton
+flox services restart tritonserver
 ```
 
 ## Service management
 
 ```bash
-flox services status              # check service state
-flox services logs triton         # tail service logs
-flox services logs triton -f      # follow logs
-flox services restart triton      # restart the tritonserver service
-flox services stop                # stop all services
-flox activate --start-services    # activate and start in one step
+flox services status                  # check service state
+flox services logs tritonserver       # tail service logs
+flox services logs tritonserver -f    # follow logs
+flox services restart tritonserver    # restart the tritonserver service
+flox services stop                    # stop all services
+flox activate --start-services        # activate and start in one step
 ```
 
 ## Troubleshooting
@@ -852,16 +852,16 @@ backend is a subdirectory containing a shared library (`libtriton_<name>.so`).
 
 The server and compiled backends (Python, ONNX Runtime) are built from source via Nix
 expressions in a separate build repository
-([build-triton-server](../builds/build-triton-server/)). The resulting Nix store paths
-are referenced in `manifest.toml` via `store-path`:
+([build-triton-server](../builds/build-triton-server/)). The resulting packages are
+published to the `meetrlyio` Flox catalog and referenced in `manifest.toml` via `pkg-path`:
 
 ```toml
 # .flox/env/manifest.toml
 [install]
-triton-server.store-path = "/nix/store/383pyayhwglsv3ywgzlzaf3pd2i72xmq-triton-server-2.66.0"
-triton-python-backend.store-path = "/nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0"
+triton-server.pkg-path = "meetrlyio/triton-server"
+triton-python-backend.pkg-path = "meetrlyio/triton-python-backend"
 triton-python-backend.priority = 10
-triton-onnxruntime-backend.store-path = "/nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0"
+triton-onnxruntime-backend.pkg-path = "meetrlyio/triton-onnxruntime-backend"
 triton-onnxruntime-backend.priority = 11
 ```
 
@@ -885,34 +885,30 @@ checked directly into `backends/vllm/` with no compilation step.
 
 ### Backend directory setup
 
-When using multiple backends, create a combined directory with symlinks:
+Backend assembly is fully automated. The `triton-setup-backends` script (bundled in the
+`triton-server` package) runs during `flox activate` via the on-activate hook and builds
+a unified backend directory at `$FLOX_ENV_CACHE/backends/`:
 
-```bash
-mkdir -p backends
-ln -s /nix/store/yhk1sv3ycny5k27nyfimsa4pb9xdin9y-triton-python-backend-2.66.0/backends/python backends/python
-ln -s /nix/store/x7wsykzn8xrwn1vrf6a7h6k1193i5jcd-triton-onnxruntime-backend-2.66.0/backends/onnxruntime backends/onnxruntime
-# vllm backend is already in backends/vllm/ (pure Python, not a store-path symlink)
-```
+- **Tier 1** (package-provided): Each subdirectory in `$FLOX_ENV/backends/` is symlinked
+  wholesale into the cache. This covers compiled backends installed via the Flox catalog
+  (python, onnxruntime).
+- **Tier 2** (repo-local): Each real directory in `$FLOX_ENV_PROJECT/backends/` that was
+  not already handled by Tier 1 is assembled with per-file symlinks. Python-based backends
+  (detected by the presence of `model.py` and absence of `libtriton_*.so`) automatically
+  get `triton_python_backend_stub` and `triton_python_backend_utils.py` injected from the
+  python backend package.
 
-Then point Triton at it:
-
-```bash
-TRITON_BACKEND_DIR=./backends flox activate --start-services
-```
-
-Or pass it directly:
-
-```bash
-tritonserver --backend-directory=./backends --model-repository=./models
-```
+The hook also exports `TRITON_BACKEND_DIR`, so `triton-serve` passes
+`--backend-directory` to tritonserver automatically. No manual symlink creation or env
+var setup is needed.
 
 ### Available backends
 
-| Backend | Store path | Library |
-|---------|-----------|---------|
-| Python | `triton-python-backend` | `backends/python/libtriton_python.so` |
-| ONNX Runtime | `triton-onnxruntime-backend` | `backends/onnxruntime/libtriton_onnxruntime.so` |
-| vLLM | (pure Python) | `backends/vllm/model.py` + Python backend stub |
+| Backend | Package | Library |
+|---------|---------|---------|
+| Python | `meetrlyio/triton-python-backend` | `backends/python/libtriton_python.so` |
+| ONNX Runtime | `meetrlyio/triton-onnxruntime-backend` | `backends/onnxruntime/libtriton_onnxruntime.so` |
+| vLLM | (pure Python, repo-local) | `backends/vllm/model.py` + Python backend stub |
 
 The ONNX Runtime backend loads `libonnxruntime.so` (ORT 1.24.2) from its Nix store
 RPATH automatically -- no need to copy ORT libraries into the backend directory.
@@ -965,19 +961,22 @@ runs on top of Triton's Python backend infrastructure (`TritonPythonModel`).
 Source files come from [triton-inference-server/vllm_backend](https://github.com/triton-inference-server/vllm_backend)
 at tag `r26.02`. The vLLM engine itself is installed via `flox-cuda/python3Packages.vllm`.
 
-**Backend directory structure:**
+**Repo source files** (checked into `backends/vllm/`):
 
 ```
 backends/vllm/
   model.py                         # Main TritonPythonModel (from vllm_backend repo)
-  triton_python_backend_stub       # Symlink -> python backend store path
-  triton_python_backend_utils.py   # Symlink -> python backend store path
   utils/
     __init__.py
     metrics.py                     # TritonMetrics, VllmStatLogger
     request.py                     # GenerateRequest, EmbedRequest
     vllm_backend_utils.py          # TritonSamplingParams, engine client builder
 ```
+
+At activation time, `triton-setup-backends` assembles the runtime directory in
+`$FLOX_ENV_CACHE/backends/vllm/` with per-file symlinks to the repo source plus
+`triton_python_backend_stub` and `triton_python_backend_utils.py` injected from the
+python backend package.
 
 **Model configuration** requires two files per model:
 
@@ -1067,16 +1066,16 @@ curl -X POST http://127.0.0.1:8000/v2/models/vllm_test/generate \
 
 ```
 triton-runtime/
-  .flox/env/manifest.toml      # Flox manifest (packages)
-  backends/                     # Combined backend directory
-    python/                     # -> /nix/store/...-triton-python-backend-2.66.0/backends/python
-    onnxruntime/                # -> /nix/store/...-triton-onnxruntime-backend-2.66.0/backends/onnxruntime
+  .flox/env/manifest.toml      # Flox manifest (packages, hook, service)
+  backends/                     # Repo-local backend sources
     vllm/                       # Pure Python backend (vllm_backend r26.02 sources)
       model.py                  # Main TritonPythonModel
-      triton_python_backend_stub       # -> python backend store path
-      triton_python_backend_utils.py   # -> python backend store path
       utils/                    # vLLM backend utilities
-  scripts/                      # Runtime script sources (also bundled in triton-server store path)
+  # At activation, triton-setup-backends assembles $FLOX_ENV_CACHE/backends/:
+  #   python/       -> $FLOX_ENV/backends/python/        (Tier 1, from catalog)
+  #   onnxruntime/  -> $FLOX_ENV/backends/onnxruntime/   (Tier 1, from catalog)
+  #   vllm/         -> per-file symlinks + python stub   (Tier 2, assembled)
+  scripts/                      # Runtime script sources (also bundled in triton-server package)
     _lib.sh                     # Shared library sourced by the other scripts
     triton-preflight            # Pre-flight validation
     triton-resolve-model        # Multi-source model provisioning
@@ -1106,7 +1105,7 @@ triton-runtime/
   README.md
 ```
 
-Scripts are bundled in the `triton-server` Nix derivation at `$out/bin/` and available on `PATH` after `flox activate`. Source copies also live in `scripts/` in this repo and in the [build-triton-server](../builds/build-triton-server/) repo under `scripts/` (which is what the Nix build packages).
+Scripts (including `triton-setup-backends`) are bundled in the `triton-server` package at `$out/bin/` and available on `PATH` after `flox activate`. Source copies also live in `scripts/` in the [build-triton-server](../builds/build-triton-server/) repo (which is what the Nix build packages).
 
 ## Security notes
 
