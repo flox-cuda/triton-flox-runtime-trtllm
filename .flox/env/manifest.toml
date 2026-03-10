@@ -81,7 +81,7 @@ on-activate = '''
 ##  $ flox activate --start-services  <- Activates & starts all
 ## ------------------------------------------------------------------
 [services]
-# myservice.command = "python3 -m http.server"
+tritonserver.command = "triton-serve"
 
 
 ## Include ----------------------------------------------------------
