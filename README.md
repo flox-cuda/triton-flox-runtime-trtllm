@@ -188,7 +188,7 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRITON_MODEL` | _(required)_ | Model name (directory name within the repository). Must not contain `/`, `\`, or be `.`/`..` |
+| `TRITON_MODEL` | _(required)_ | Model name (directory name within the repository). Controls which model `triton-resolve-model` provisions — does **not** restrict which models tritonserver loads (see `TRITON_MODEL_CONTROL_MODE`). Must not contain `/`, `\`, or be `.`/`..` |
 | `TRITON_MODEL_REPOSITORY` | _(required)_ | Base model repository path. Created automatically if missing |
 | `TRITON_MODEL_ID` | _(unset)_ | Explicit HuggingFace model ID (`org/repo`) for hf-hub source |
 | `TRITON_MODEL_ORG` | _(unset)_ | HF org prefix. Used to derive model ID as `$TRITON_MODEL_ORG/$TRITON_MODEL` |
@@ -200,7 +200,7 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRITON_MODEL_CONTROL_MODE` | `none` | Model control mode: `none`, `explicit`, `poll` |
+| `TRITON_MODEL_CONTROL_MODE` | `none` | How tritonserver manages models at startup. `none` (default): loads **all** subdirectories in the model repository. `explicit`: loads nothing until `--load-model=<name>` is passed as an extra arg to `triton-serve`. `poll`: loads all initially, then watches for additions/changes |
 | `TRITON_LOG_VERBOSE` | `0` | Tritonserver log verbosity level. Non-negative integer |
 | `TRITON_STRICT_READINESS` | `true` | Require all models ready for health check. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
 | `TRITON_ALLOW_HTTP` | `true` | Enable HTTP endpoint. Accepts `true`/`false`/`1`/`0`/`yes`/`no` |
@@ -671,7 +671,10 @@ TRITON_MODEL_BACKEND=onnx \
   flox activate --start-services
 ```
 
-To load only a specific model (avoids loading everything in the model repository):
+**Important:** With the default `TRITON_MODEL_CONTROL_MODE=none`, tritonserver
+loads every model subdirectory in `TRITON_MODEL_REPOSITORY` at startup — not
+just the one named by `TRITON_MODEL`. To load **only** the specified model, use
+`explicit` mode with `--load-model`:
 
 ```bash
 TRITON_MODEL=qwen3_8b \
