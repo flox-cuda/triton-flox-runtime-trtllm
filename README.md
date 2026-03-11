@@ -1,6 +1,6 @@
 # Triton Inference Server Runtime
 
-Production NVIDIA Triton Inference Server deployment as a Flox environment. Serves model repositories (TensorRT, ONNX, PyTorch, TensorFlow, Python, vLLM backends) via `tritonserver` with GPU acceleration and multi-port serving (HTTP, gRPC, metrics).
+Production NVIDIA Triton Inference Server deployment as a Flox environment. Serves model repositories (TensorRT, TensorRT-LLM, ONNX, PyTorch, TensorFlow, Python, vLLM backends) via `tritonserver` with GPU acceleration and multi-port serving (HTTP, gRPC, metrics).
 
 - **Triton Inference Server**: v2.66.0 (built from source via Nix)
 - **CUDA**: requires NVIDIA driver with CUDA support
@@ -91,6 +91,8 @@ chained separately.
 │    triton-server (meetrlyio)    # server + scripts       │
 │    triton-python-backend        # Python backend .so     │
 │    triton-onnxruntime-backend   # ONNX Runtime backend   │
+│    triton-tensorrt-backend      # TensorRT backend       │
+│    triton-tensorrtllm-backend   # TensorRT-LLM backend   │
 │    util-linux                   # flock (preflight)      │
 │    iproute2                     # ss (port scanning)     │
 │    vllm, torch, numpy, ...      # Python ML packages     │
@@ -138,11 +140,14 @@ $TRITON_MODEL_REPOSITORY/
 | Backend | Artifact | Notes |
 |---------|----------|-------|
 | `tensorrt` | `model.plan` | Pre-compiled TensorRT engine |
+| `tensorrtllm` | `model` (engine dir) | TensorRT-LLM engine (LLM inference with inflight batching) |
 | `onnx` | `model.onnx` | ONNX Runtime |
 | `pytorch` | `model.pt` | TorchScript model |
 | `tensorflow` | `model.savedmodel/` | Directory; must contain `saved_model.pb` |
 | `python` | `model.py` | Python backend script |
 | `vllm` | `model.json` | vLLM configuration file |
+
+**TensorRT-LLM model conversion:** Converting HuggingFace models to TRT-LLM engine format requires the `tensorrt_llm` Python package (Python 3.12), which is not available in this environment. This runtime handles *serving* TRT-LLM engines; model conversion is a separate step requiring a dedicated environment or the NGC container.
 
 ### Version directories
 
@@ -192,7 +197,7 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 | `TRITON_MODEL_REPOSITORY` | _(required)_ | Base model repository path. Created automatically if missing |
 | `TRITON_MODEL_ID` | _(unset)_ | Explicit HuggingFace model ID (`org/repo`) for hf-hub source |
 | `TRITON_MODEL_ORG` | _(unset)_ | HF org prefix. Used to derive model ID as `$TRITON_MODEL_ORG/$TRITON_MODEL` |
-| `TRITON_MODEL_BACKEND` | _(unset)_ | Backend hint: `tensorrt`, `onnx`, `pytorch`, `tensorflow`, `python`, `vllm`. Restricts artifact validation |
+| `TRITON_MODEL_BACKEND` | _(unset)_ | Backend hint: `tensorrt`, `tensorrtllm`, `onnx`, `pytorch`, `tensorflow`, `python`, `vllm`. Restricts artifact validation |
 | `TRITON_MODEL_SOURCES` | `flox,local,r2,hf-hub` | Comma-separated source chain. Available: `flox`, `local`, `hf-cache`, `r2`, `hf-hub` |
 | `TRITON_MODEL_ENV_FILE` | _(derived)_ | Override env file path. Default: `$FLOX_ENV_CACHE/triton-model.<slug>.<hash>.env` |
 
@@ -866,19 +871,20 @@ backend is a subdirectory containing a shared library (`libtriton_<name>.so`).
 
 ### Built-from-source backends
 
-The server and compiled backends (Python, ONNX Runtime) are built from source via Nix
-expressions in a separate build repository
-([build-triton-server](../builds/build-triton-server/)). The resulting packages are
-published to the `meetrlyio` Flox catalog and referenced in `manifest.toml` via `pkg-path`:
+The server and compiled backends (Python, ONNX Runtime, TensorRT, TensorRT-LLM) are
+built from source (or extracted from NGC containers) via Nix expressions in a separate
+build repository ([build-triton-server](../builds/build-triton-server/)). The resulting
+packages are published to the `meetrlyio` Flox catalog and referenced in `manifest.toml`
+via `pkg-path`:
 
 ```toml
 # .flox/env/manifest.toml
 [install]
 triton-server.pkg-path = "meetrlyio/triton-server"
 triton-python-backend.pkg-path = "meetrlyio/triton-python-backend"
-triton-python-backend.priority = 10
 triton-onnxruntime-backend.pkg-path = "meetrlyio/triton-onnxruntime-backend"
-triton-onnxruntime-backend.priority = 11
+triton-tensorrt-backend.pkg-path = "meetrlyio/triton-tensorrt-backend"
+triton-tensorrtllm-backend.pkg-path = "meetrlyio/triton-tensorrtllm-backend"
 ```
 
 ### Nixpkgs-provided packages
@@ -907,7 +913,7 @@ a unified backend directory at `$FLOX_ENV_CACHE/backends/`:
 
 - **Tier 1** (package-provided): Each subdirectory in `$FLOX_ENV/backends/` is symlinked
   wholesale into the cache. This covers compiled backends installed via the Flox catalog
-  (python, onnxruntime).
+  (python, onnxruntime, tensorrt, tensorrtllm).
 - **Tier 2** (repo-local): Each real directory in `$FLOX_ENV_PROJECT/backends/` that was
   not already handled by Tier 1 is assembled with per-file symlinks. Python-based backends
   (detected by the presence of `model.py` and absence of `libtriton_*.so`) automatically
@@ -924,10 +930,15 @@ var setup is needed.
 |---------|---------|---------|
 | Python | `meetrlyio/triton-python-backend` | `backends/python/libtriton_python.so` |
 | ONNX Runtime | `meetrlyio/triton-onnxruntime-backend` | `backends/onnxruntime/libtriton_onnxruntime.so` |
+| TensorRT | `meetrlyio/triton-tensorrt-backend` | `backends/tensorrt/libtriton_tensorrt.so` |
+| TensorRT-LLM | `meetrlyio/triton-tensorrtllm-backend` | `backends/tensorrtllm/libtriton_tensorrtllm.so` |
 | vLLM | (pure Python, repo-local) | `backends/vllm/model.py` + Python backend stub |
 
 The ONNX Runtime backend loads `libonnxruntime.so` (ORT 1.24.2) from its Nix store
 RPATH automatically -- no need to copy ORT libraries into the backend directory.
+The TensorRT backend similarly loads the TRT SDK via RPATH. The TensorRT-LLM backend
+bundles its own runtime libraries (TRT-LLM, CUDA 13.x, NCCL) with `$ORIGIN`-relative
+RPATHs for SONAME isolation from the system's CUDA 12.x.
 
 ### ONNX Runtime backend details
 
@@ -1090,6 +1101,8 @@ triton-runtime/
   # At activation, triton-setup-backends assembles $FLOX_ENV_CACHE/backends/:
   #   python/       -> $FLOX_ENV/backends/python/        (Tier 1, from catalog)
   #   onnxruntime/  -> $FLOX_ENV/backends/onnxruntime/   (Tier 1, from catalog)
+  #   tensorrt/     -> $FLOX_ENV/backends/tensorrt/      (Tier 1, from catalog)
+  #   tensorrtllm/  -> $FLOX_ENV/backends/tensorrtllm/   (Tier 1, from catalog)
   #   vllm/         -> per-file symlinks + python stub   (Tier 2, assembled)
   scripts/                      # Runtime script sources (also bundled in triton-server package)
     _lib.sh                     # Shared library sourced by the other scripts
