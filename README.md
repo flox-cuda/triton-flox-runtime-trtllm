@@ -117,7 +117,7 @@ chained separately.
 
 `triton-preflight` can also be run standalone for diagnostics (see [Pre-flight](#pre-flight-triton-preflight)).
 
-Scripts are bundled in the `triton-server` package at `$out/bin/` and available on `PATH` after `flox activate`.
+Scripts are bundled in the `triton-server` package at `$FLOX_ENV/bin/` and available on `PATH` after `flox activate`.
 
 ## Model repository layout
 
