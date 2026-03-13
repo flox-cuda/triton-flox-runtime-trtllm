@@ -48,6 +48,33 @@ curl http://127.0.0.1:9000/v1/models
 
 gRPC health checks require `grpcurl` or a gRPC client on port 8001. See the [Triton Inference Server documentation](https://github.com/triton-inference-server/server) for full API details.
 
+### Client testing
+
+[triton-api-client](https://github.com/barstoolbluz/triton-api-client) is a companion Flox environment with tools and examples for all four Triton client interfaces:
+
+| Tool | Description |
+|------|-------------|
+| `triton-infer` | Universal inference CLI -- auto-detects model type (generate vs TRT-LLM) and routes accordingly |
+| `triton-chat` | Interactive multi-turn chat REPL via OpenAI-compatible frontend (port 9000) |
+| `triton-test` | Health check, smoke test, and benchmark tool |
+| `examples/openai/` | Chat, streaming, and batch completions via OpenAI SDK |
+| `examples/generate/` | Text generation via Triton's generate extension |
+| `examples/kserve/` | KServe v2 tensor inference (HTTP, gRPC, async) and server metadata |
+| `examples/trtllm/` | TRT-LLM raw tensor inference with client-side HuggingFace tokenization |
+
+```bash
+cd ~/dev/triton-api-client && flox activate
+
+# Universal inference (auto-detects model type)
+TRITON_MODEL=qwen2_5_05b_trtllm triton-infer "The capital of France is"
+
+# Interactive chat (OpenAI frontend, port 9000)
+TRITON_MODEL=my-llm triton-chat
+
+# Health + smoke test + benchmark
+TRITON_MODEL=my-llm triton-test bench -n 50 --concurrent 5
+```
+
 ### Local dev vs production
 
 | Setting | Local dev | Production |
