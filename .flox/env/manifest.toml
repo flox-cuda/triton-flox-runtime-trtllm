@@ -15,8 +15,6 @@ version = 1
 ##  $ flox show gum     <- show all versions of a package
 ## -------------------------------------------------------------------
 [install]
-triton-server.pkg-path = "flox/triton-server"
-triton-server.systems = ["x86_64-linux"]
 triton-python-backend.pkg-path = "flox/triton-python-backend"
 triton-python-backend.systems = ["x86_64-linux"]
 triton-python-backend.priority = 4
@@ -26,9 +24,6 @@ triton-onnxruntime-backend.priority = 5
 triton-tensorrt-backend.pkg-path = "flox/triton-tensorrt-backend"
 triton-tensorrt-backend.systems = ["x86_64-linux"]
 triton-tensorrt-backend.priority = 6
-triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
-triton-tensorrtllm-backend.systems = ["x86_64-linux"]
-triton-tensorrtllm-backend.priority = 7
 shellcheck.pkg-path = "shellcheck"
 bats.pkg-path = "bats"
 numpy.pkg-path = "flox-cuda/python3Packages.numpy"
@@ -47,8 +42,20 @@ util-linux.pkg-path = "util-linux"
 util-linux.systems = ["x86_64-linux"]
 iproute2.pkg-path = "iproute2"
 iproute2.systems = ["x86_64-linux"]
-# gum.pkg-path = "gum"
-# gum.version = "^0.14.5"
+triton-server.pkg-path = "flox/triton-server"
+triton-server.version = "2.66.0+c279dda"
+triton-server.systems = ["x86_64-linux"]
+triton-server.pkg-group = "triton-server"
+triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
+triton-tensorrtllm-backend.systems = ["x86_64-linux"]
+triton-tensorrtllm-backend.version = "2.66.0+c279dda"
+triton-tensorrtllm-backend.pkg-group = "triton-tensorrtllm"
+triton-tensorrtllm-backend.priority = 7
+
+## optional model for model serving demo
+triton-model-qwen2-5-05b-trtllm.pkg-path = "flox/triton-model-qwen2-5-05b-trtllm"
+triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
+triton-model-qwen2-5-05b-trtllm.pkg-group = "triton-model-qwen2-5-05b-trtllm"
 
 
 ## Environment Variables ---------------------------------------------
@@ -66,6 +73,19 @@ iproute2.systems = ["x86_64-linux"]
 on-activate = '''
   triton-setup-backends
   export TRITON_BACKEND_DIR="$FLOX_ENV_CACHE/backends"
+
+  # TRT-LLM MPI: set OPAL_PREFIX so MPI_Init_thread finds help files + MCA modules
+  if [[ -d "$FLOX_ENV_CACHE/backends/tensorrtllm" ]]; then
+    _trtllm_root="$(readlink -f "$FLOX_ENV_CACHE/backends/tensorrtllm")"
+    _trtllm_root="${_trtllm_root%/backends/tensorrtllm}"
+    if [[ -d "$_trtllm_root/hpcx/ompi" ]]; then
+      export OPAL_PREFIX="$_trtllm_root/hpcx/ompi"
+      export LD_LIBRARY_PATH="${_trtllm_root}/hpcx/ompi/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+  fi
+
+  triton-setup-models
+  export TRITON_MODEL_REPOSITORY="${TRITON_MODEL_REPOSITORY:-$FLOX_ENV_CACHE/models}"
 '''
 
 
