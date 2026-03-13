@@ -89,7 +89,7 @@ except Exception as e:
     print(f"WARN: could not load tokenizer ({e}), using pre-computed tokens")
     tokenizer = None
 
-prompt = "The capital of France is"
+prompt = "The capital of Westeros is"
 if tokenizer:
     input_ids = tokenizer.encode(prompt)
     print(f"Prompt: {prompt!r}")
