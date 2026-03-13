@@ -848,9 +848,19 @@ Common R2 issues:
 
 Check staging logs (preserved on failure) at `$TRITON_MODEL_STATE_DIR/.staging/`.
 
+### OpenAI frontend dependency installation
+
+The OpenAI frontend's Python dependencies (FastAPI, Uvicorn, etc.) are installed automatically on first `flox activate` into `$FLOX_ENV_CACHE/openai-deps/` using `uv pip install --target`. A sentinel file (`.installed-v1`) prevents re-installation on subsequent activations. To force a reinstall:
+
+```bash
+rm -rf "$FLOX_ENV_CACHE/openai-deps"
+```
+
+The `tritonserver` and `tritonfrontend` wheels shipped in the `triton-server` package are also installed into this target directory.
+
 ### OpenAI frontend main.py not found
 
-The OpenAI frontend auto-discovers `main.py` from standard locations (`/opt/tritonserver/python/openai/main.py` or relative to the `tritonserver` binary). If it fails, set the path explicitly:
+The OpenAI frontend auto-discovers `main.py` relative to the `tritonserver` binary (`$(dirname $(which tritonserver))/../python/openai/main.py`). The `triton-server` package bundles the frontend source at this path. If discovery fails, set the path explicitly:
 
 ```bash
 TRITON_OPENAI_MAIN=/path/to/openai/main.py flox activate --start-services

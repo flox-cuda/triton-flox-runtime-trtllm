@@ -42,8 +42,9 @@ util-linux.pkg-path = "util-linux"
 util-linux.systems = ["x86_64-linux"]
 iproute2.pkg-path = "iproute2"
 iproute2.systems = ["x86_64-linux"]
+uv.pkg-path = "uv"
 triton-server.pkg-path = "flox/triton-server"
-triton-server.version = "2.66.0+c279dda"
+triton-server.version = "2.66.0+3950d01"
 triton-server.systems = ["x86_64-linux"]
 triton-server.pkg-group = "triton-server"
 triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
@@ -86,6 +87,26 @@ on-activate = '''
 
   triton-setup-models
   export TRITON_MODEL_REPOSITORY="${TRITON_MODEL_REPOSITORY:-$FLOX_ENV_CACHE/models}"
+
+  # OpenAI frontend dependencies
+  _ts_prefix="$(dirname "$(command -v tritonserver)")/.."
+  _openai_main="$_ts_prefix/python/openai/main.py"
+  if [[ -f "$_openai_main" ]]; then
+    _openai_reqs="$_ts_prefix/python/openai/requirements.txt"
+    _openai_deps="$FLOX_ENV_CACHE/openai-deps"
+    _openai_sentinel="$_openai_deps/.installed-v1"
+    if [[ ! -f "$_openai_sentinel" ]]; then
+      echo "Installing OpenAI frontend dependencies..."
+      mkdir -p "$_openai_deps"
+      uv pip install --target "$_openai_deps" \
+        -r "$_openai_reqs" \
+        "$_ts_prefix"/python/tritonserver-*.whl \
+        "$_ts_prefix"/python/tritonfrontend-*.whl \
+        2>&1 | tail -1
+      touch "$_openai_sentinel"
+    fi
+    export PYTHONPATH="${_openai_deps}${PYTHONPATH:+:$PYTHONPATH}"
+  fi
 '''
 
 
