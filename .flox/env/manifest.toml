@@ -43,7 +43,7 @@ util-linux.systems = ["x86_64-linux"]
 iproute2.pkg-path = "iproute2"
 iproute2.systems = ["x86_64-linux"]
 uv.pkg-path = "uv"
-triton-server.store-path = "/nix/store/k7y29brmb1gij8hrjn71p4w0w683yzwq-triton-server-2.66.0+bea06f4"
+triton-server.store-path = "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556"
 triton-server.systems = ["x86_64-linux"]
 triton-server.priority = 3
 triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
@@ -64,8 +64,9 @@ triton-model-phi4-mini-trtllm.systems = ["x86_64-linux"]
 ##      as well as [hook], [profile] scripts and [services] below.
 ## -------------------------------------------------------------------
 [vars]
-TRITON_MODEL = "phi4_mini_trtllm"
+TRITON_MODEL = "deepseek_r1_7b_trtllm"
 TRITON_OPENAI_FRONTEND = "true"
+TRITON_LOCAL_MODELS = "/mnt/scratch/trtllm-models"
 # INTRO_MESSAGE = "It's gettin' Flox in here"
 
 

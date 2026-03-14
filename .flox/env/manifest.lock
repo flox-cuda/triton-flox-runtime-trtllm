@@ -66,7 +66,7 @@
         ]
       },
       "triton-server": {
-        "store-path": "/nix/store/k7y29brmb1gij8hrjn71p4w0w683yzwq-triton-server-2.66.0+bea06f4",
+        "store-path": "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556",
         "systems": [
           "x86_64-linux"
         ],
@@ -106,7 +106,8 @@
       }
     },
     "vars": {
-      "TRITON_MODEL": "phi4_mini_trtllm",
+      "TRITON_LOCAL_MODELS": "/mnt/scratch/trtllm-models",
+      "TRITON_MODEL": "deepseek_r1_7b_trtllm",
       "TRITON_OPENAI_FRONTEND": "true"
     },
     "hook": {
@@ -135,7 +136,7 @@
     },
     {
       "install_id": "triton-server",
-      "store_path": "/nix/store/k7y29brmb1gij8hrjn71p4w0w683yzwq-triton-server-2.66.0+bea06f4",
+      "store_path": "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556",
       "system": "x86_64-linux",
       "priority": 3
     },
