@@ -185,7 +185,27 @@ $TRITON_MODEL_REPOSITORY/
 | `python` | `model.py` | Python backend script |
 | `vllm` | `model.json` | vLLM configuration file |
 
-**TensorRT-LLM model conversion:** Converting HuggingFace models to TRT-LLM engine format requires the `tensorrt_llm` Python package (Python 3.12), which is not available in this environment. Use the [triton-trtllm-tools](../triton-trtllm-tools/) environment for model conversion. This runtime handles *serving* TRT-LLM engines; conversion is a separate concern.
+**TRT-LLM model preparation workflow:** TRT-LLM models require a two-stage pipeline
+before they can be served. This runtime handles *serving only* — preparation happens
+in separate environments:
+
+1. **Build engines** ([triton-trtllm-tools](../triton-trtllm-tools/)): Convert
+   HuggingFace models to TRT-LLM engine format using the `tensorrt_llm` Python package
+   (Python 3.12). This produces an `engine/` directory and a `tokenizer/` directory.
+
+2. **Consume engines** (this runtime): Serve the prepared engines via one of two paths:
+
+   - **Direct** — Point `TRITON_LOCAL_MODELS` at a directory containing your engine
+     builds. `triton-setup-models` assembles them as Tier 3 and auto-synthesizes the
+     ensemble pipeline (preprocessing, postprocessing, BLS orchestrator). No packaging
+     step required.
+   - **Packaged** — Build a Nix model package in the
+     [build-trtllm-models](../builds/build-trtllm-models/) repo, publish it to the Flox
+     catalog, and install it in this environment's manifest. The model appears as Tier 1
+     with its ensemble bundled. This path gives you pinned versions, reproducibility, and
+     shared catalog distribution.
+
+The direct path is faster for iteration; the packaged path is better for production.
 
 ### Version directories
 
