@@ -46,7 +46,7 @@
         ]
       },
       "triton-model-qwen2-5-05b-trtllm": {
-        "store-path": "/nix/store/gzyafjvqvgmm2jbj64f0igmzifvlqb7c-triton-model-qwen2-5-05b-trtllm-0.1.0+d5aa205",
+        "store-path": "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1",
         "systems": [
           "x86_64-linux"
         ]
@@ -129,7 +129,7 @@
     },
     {
       "install_id": "triton-model-qwen2-5-05b-trtllm",
-      "store_path": "/nix/store/gzyafjvqvgmm2jbj64f0igmzifvlqb7c-triton-model-qwen2-5-05b-trtllm-0.1.0+d5aa205",
+      "store_path": "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1",
       "system": "x86_64-linux",
       "priority": 5
     },

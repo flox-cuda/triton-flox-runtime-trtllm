@@ -53,7 +53,7 @@ triton-tensorrtllm-backend.pkg-group = "triton-tensorrtllm"
 triton-tensorrtllm-backend.priority = 7
 
 ## optional models for model serving demo
-triton-model-qwen2-5-05b-trtllm.store-path = "/nix/store/gzyafjvqvgmm2jbj64f0igmzifvlqb7c-triton-model-qwen2-5-05b-trtllm-0.1.0+d5aa205"
+triton-model-qwen2-5-05b-trtllm.store-path = "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1"
 triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
 triton-model-phi4-mini-trtllm.store-path = "/nix/store/0ryy8l1779irvmmx37f0h9d2hn3839i4-triton-model-phi4-mini-trtllm-0.1.0+199a7d1"
 triton-model-phi4-mini-trtllm.systems = ["x86_64-linux"]
