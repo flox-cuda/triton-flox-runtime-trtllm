@@ -43,7 +43,7 @@ util-linux.systems = ["x86_64-linux"]
 iproute2.pkg-path = "iproute2"
 iproute2.systems = ["x86_64-linux"]
 uv.pkg-path = "uv"
-triton-server.store-path = "/nix/store/3qr3wi58c70qkrcb6a7j1rr5zhllr19l-triton-server-2.66.0+e572f56"
+triton-server.store-path = "/nix/store/k7y29brmb1gij8hrjn71p4w0w683yzwq-triton-server-2.66.0+bea06f4"
 triton-server.systems = ["x86_64-linux"]
 triton-server.priority = 3
 triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
@@ -52,9 +52,11 @@ triton-tensorrtllm-backend.version = "2.66.0+c279dda"
 triton-tensorrtllm-backend.pkg-group = "triton-tensorrtllm"
 triton-tensorrtllm-backend.priority = 7
 
-## optional model for model serving demo
-triton-model-qwen2-5-05b-trtllm.store-path = "/nix/store/l04v6wjzf8v9wcr0vsm7054msg7bmrhp-triton-model-qwen2-5-05b-trtllm-0.1.0+e1f5d81"
+## optional models for model serving demo
+triton-model-qwen2-5-05b-trtllm.store-path = "/nix/store/gzyafjvqvgmm2jbj64f0igmzifvlqb7c-triton-model-qwen2-5-05b-trtllm-0.1.0+d5aa205"
 triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
+triton-model-phi4-mini-trtllm.store-path = "/nix/store/aiarp5s7rs2wkpjv4bqs97h0w8f8fw47-triton-model-phi4-mini-trtllm-0.1.0+b23a5b4"
+triton-model-phi4-mini-trtllm.systems = ["x86_64-linux"]
 
 
 ## Environment Variables ---------------------------------------------
@@ -62,7 +64,7 @@ triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
 ##      as well as [hook], [profile] scripts and [services] below.
 ## -------------------------------------------------------------------
 [vars]
-TRITON_MODEL = "qwen2_5_05b_trtllm"
+TRITON_MODEL = "phi4_mini_trtllm"
 TRITON_OPENAI_FRONTEND = "true"
 # INTRO_MESSAGE = "It's gettin' Flox in here"
 

@@ -39,8 +39,14 @@
           "x86_64-linux"
         ]
       },
+      "triton-model-phi4-mini-trtllm": {
+        "store-path": "/nix/store/aiarp5s7rs2wkpjv4bqs97h0w8f8fw47-triton-model-phi4-mini-trtllm-0.1.0+b23a5b4",
+        "systems": [
+          "x86_64-linux"
+        ]
+      },
       "triton-model-qwen2-5-05b-trtllm": {
-        "store-path": "/nix/store/l04v6wjzf8v9wcr0vsm7054msg7bmrhp-triton-model-qwen2-5-05b-trtllm-0.1.0+e1f5d81",
+        "store-path": "/nix/store/gzyafjvqvgmm2jbj64f0igmzifvlqb7c-triton-model-qwen2-5-05b-trtllm-0.1.0+d5aa205",
         "systems": [
           "x86_64-linux"
         ]
@@ -60,7 +66,7 @@
         ]
       },
       "triton-server": {
-        "store-path": "/nix/store/3qr3wi58c70qkrcb6a7j1rr5zhllr19l-triton-server-2.66.0+e572f56",
+        "store-path": "/nix/store/k7y29brmb1gij8hrjn71p4w0w683yzwq-triton-server-2.66.0+bea06f4",
         "systems": [
           "x86_64-linux"
         ],
@@ -100,7 +106,7 @@
       }
     },
     "vars": {
-      "TRITON_MODEL": "qwen2_5_05b_trtllm",
+      "TRITON_MODEL": "phi4_mini_trtllm",
       "TRITON_OPENAI_FRONTEND": "true"
     },
     "hook": {
@@ -116,14 +122,20 @@
   },
   "packages": [
     {
+      "install_id": "triton-model-phi4-mini-trtllm",
+      "store_path": "/nix/store/aiarp5s7rs2wkpjv4bqs97h0w8f8fw47-triton-model-phi4-mini-trtllm-0.1.0+b23a5b4",
+      "system": "x86_64-linux",
+      "priority": 5
+    },
+    {
       "install_id": "triton-model-qwen2-5-05b-trtllm",
-      "store_path": "/nix/store/l04v6wjzf8v9wcr0vsm7054msg7bmrhp-triton-model-qwen2-5-05b-trtllm-0.1.0+e1f5d81",
+      "store_path": "/nix/store/gzyafjvqvgmm2jbj64f0igmzifvlqb7c-triton-model-qwen2-5-05b-trtllm-0.1.0+d5aa205",
       "system": "x86_64-linux",
       "priority": 5
     },
     {
       "install_id": "triton-server",
-      "store_path": "/nix/store/3qr3wi58c70qkrcb6a7j1rr5zhllr19l-triton-server-2.66.0+e572f56",
+      "store_path": "/nix/store/k7y29brmb1gij8hrjn71p4w0w683yzwq-triton-server-2.66.0+bea06f4",
       "system": "x86_64-linux",
       "priority": 3
     },
