@@ -25,6 +25,11 @@ TRITON_OPENAI_FRONTEND=true \
 TRITON_OPENAI_TOKENIZER=meta-llama/Llama-3-8B \
 TRITON_MODEL=llama \
   flox activate --start-services
+
+# Serve a local TRT-LLM model (engine + tokenizer only, ensemble auto-synthesized)
+TRITON_MODEL=my_llm_trtllm \
+TRITON_LOCAL_MODELS=/data/trtllm-models \
+  flox activate --start-services
 ```
 
 ### Verify it is running
@@ -129,6 +134,7 @@ chained separately.
 │  │  on-activate (flox activate)                       │  │
 │  │    triton-setup-backends  → $FLOX_ENV_CACHE/backends│  │
 │  │    triton-setup-models    → $FLOX_ENV_CACHE/models  │  │
+│  │      (Tier 1/2/3 + TRT-LLM ensemble synthesis)     │  │
 │  ├────────────────────────────────────────────────────┤  │
 │  │  triton-resolve-model                              │  │
 │  │    Sources: flox → local → r2 → hf-hub             │  │
@@ -231,6 +237,7 @@ TRITON_HTTP_PORT=9000 TRITON_LOG_VERBOSE=1 flox activate --start-services
 | `TRITON_MODEL_ORG` | _(unset)_ | HF org prefix. Used to derive model ID as `$TRITON_MODEL_ORG/$TRITON_MODEL` |
 | `TRITON_MODEL_BACKEND` | _(unset)_ | Backend hint: `tensorrt`, `tensorrtllm`, `onnx`, `pytorch`, `tensorflow`, `python`, `vllm`. Restricts artifact validation |
 | `TRITON_MODEL_SOURCES` | `flox,local,r2,hf-hub` | Comma-separated source chain. Available: `flox`, `local`, `hf-cache`, `r2`, `hf-hub` |
+| `TRITON_LOCAL_MODELS` | _(unset)_ | Path to a directory of external TRT-LLM models. Each subdirectory should contain `engine/` and `tokenizer/`. Assembled as Tier 3 by `triton-setup-models`; ensemble pipelines are synthesized automatically |
 | `TRITON_MODEL_ENV_FILE` | _(derived)_ | Override env file path. Default: `$FLOX_ENV_CACHE/triton-model.<slug>.<hash>.env` |
 
 ### Server settings
@@ -1001,14 +1008,30 @@ a model directory at `$FLOX_ENV_CACHE/models/`:
   `config.pbtxt`.
 - **Tier 2** (repo-local): Each directory in `$FLOX_ENV_PROJECT/models/` that was not
   already handled by Tier 1 is symlinked into the cache.
+- **Tier 3** (external local): Each directory under `$TRITON_LOCAL_MODELS/` that was not
+  already handled by Tier 1 or Tier 2 is assembled into the cache. Intended for TRT-LLM
+  models with pre-built engines stored outside the repo.
 
-**Template token expansion**: `config.pbtxt.template` files support three tokens:
+**Template token expansion**: `config.pbtxt.template` files support four tokens:
 
 | Token | Expanded to |
 |-------|-------------|
 | `@EXECUTOR_WORKER_PATH@` | `$TRITON_BACKEND_DIR/tensorrtllm/trtllmExecutorWorker` |
 | `@GPT_MODEL_PATH@` | `$FLOX_ENV_CACHE/models/<name>/engine` |
 | `@TOKENIZER_DIR@` | `$FLOX_ENV_CACHE/models/<name>/tokenizer` |
+| `@MODEL_NAME@` | Model directory name (e.g., `my_llm_trtllm`) |
+
+**TRT-LLM ensemble synthesis**: After all tiers are assembled, `triton-setup-models`
+checks each model for ensemble synthesis eligibility. A model qualifies if it has an
+`engine/` directory but no sibling `_preprocessing` directory. For qualifying models,
+three directories are synthesized from templates bundled in the `triton-server` package:
+
+- `{name}_preprocessing/` — tokenizer (Python backend)
+- `{name}_postprocessing/` — detokenizer (Python backend)
+- `{name}_ensemble/` — BLS orchestrator with streaming support
+
+The raw model also gets a `config.pbtxt` and `1/` version directory if missing. Synthesis
+is skipped for models that already ship with an ensemble (e.g., Tier 1 packages).
 
 The hook exports `TRITON_MODEL_REPOSITORY` pointing to the assembled model directory
 if model packages are present.
@@ -1178,10 +1201,12 @@ triton-runtime/
   #   tensorrtllm/  -> $FLOX_ENV/backends/tensorrtllm/   (Tier 1, from catalog)
   #   vllm/         -> per-file symlinks + python stub   (Tier 2, assembled)
   # At activation, triton-setup-models assembles $FLOX_ENV_CACHE/models/:
-  #   qwen2_5_05b_trtllm/ -> copied + config.pbtxt.template expanded (Tier 1, from catalog)
-  #   vllm_test/          -> $FLOX_ENV_PROJECT/models/vllm_test/     (Tier 2, symlinked)
-  #   onnx_identity/      -> $FLOX_ENV_PROJECT/models/onnx_identity/ (Tier 2, symlinked)
-  #   ...
+  #   phi4_mini_trtllm/*          -> Tier 1 (from catalog, with ensemble)
+  #   vllm_test/                  -> Tier 2 (symlinked from $FLOX_ENV_PROJECT/models/)
+  #   my_model_trtllm/            -> Tier 3 (from $TRITON_LOCAL_MODELS/)
+  #   my_model_trtllm_preprocessing/  -> synthesized from trtllm-templates
+  #   my_model_trtllm_postprocessing/ -> synthesized from trtllm-templates
+  #   my_model_trtllm_ensemble/       -> synthesized from trtllm-templates
   scripts/                      # Runtime script sources (also bundled in triton-server package)
     _lib.sh                     # Shared library sourced by the other scripts
     triton-preflight            # Pre-flight validation
