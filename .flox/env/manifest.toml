@@ -43,10 +43,9 @@ util-linux.systems = ["x86_64-linux"]
 iproute2.pkg-path = "iproute2"
 iproute2.systems = ["x86_64-linux"]
 uv.pkg-path = "uv"
-triton-server.pkg-path = "flox/triton-server"
-triton-server.version = "2.66.0+3950d01"
+triton-server.store-path = "/nix/store/3qr3wi58c70qkrcb6a7j1rr5zhllr19l-triton-server-2.66.0+e572f56"
 triton-server.systems = ["x86_64-linux"]
-triton-server.pkg-group = "triton-server"
+triton-server.priority = 3
 triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
 triton-tensorrtllm-backend.systems = ["x86_64-linux"]
 triton-tensorrtllm-backend.version = "2.66.0+c279dda"
@@ -54,9 +53,8 @@ triton-tensorrtllm-backend.pkg-group = "triton-tensorrtllm"
 triton-tensorrtllm-backend.priority = 7
 
 ## optional model for model serving demo
-triton-model-qwen2-5-05b-trtllm.pkg-path = "flox/triton-model-qwen2-5-05b-trtllm"
+triton-model-qwen2-5-05b-trtllm.store-path = "/nix/store/l04v6wjzf8v9wcr0vsm7054msg7bmrhp-triton-model-qwen2-5-05b-trtllm-0.1.0+e1f5d81"
 triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
-triton-model-qwen2-5-05b-trtllm.pkg-group = "triton-model-qwen2-5-05b-trtllm"
 
 
 ## Environment Variables ---------------------------------------------
@@ -64,6 +62,8 @@ triton-model-qwen2-5-05b-trtllm.pkg-group = "triton-model-qwen2-5-05b-trtllm"
 ##      as well as [hook], [profile] scripts and [services] below.
 ## -------------------------------------------------------------------
 [vars]
+TRITON_MODEL = "qwen2_5_05b_trtllm"
+TRITON_OPENAI_FRONTEND = "true"
 # INTRO_MESSAGE = "It's gettin' Flox in here"
 
 
@@ -75,14 +75,29 @@ on-activate = '''
   triton-setup-backends
   export TRITON_BACKEND_DIR="$FLOX_ENV_CACHE/backends"
 
-  # TRT-LLM MPI: set OPAL_PREFIX so MPI_Init_thread finds help files + MCA modules
+  # TRT-LLM: backend libs + MPI (OPAL_PREFIX for MPI_Init_thread help/MCA modules)
   if [[ -d "$FLOX_ENV_CACHE/backends/tensorrtllm" ]]; then
     _trtllm_root="$(readlink -f "$FLOX_ENV_CACHE/backends/tensorrtllm")"
     _trtllm_root="${_trtllm_root%/backends/tensorrtllm}"
+    export LD_LIBRARY_PATH="${_trtllm_root}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     if [[ -d "$_trtllm_root/hpcx/ompi" ]]; then
       export OPAL_PREFIX="$_trtllm_root/hpcx/ompi"
-      export LD_LIBRARY_PATH="${_trtllm_root}/hpcx/ompi/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      export LD_LIBRARY_PATH="${_trtllm_root}/hpcx/ompi/lib:$LD_LIBRARY_PATH"
     fi
+    # CUDA driver stub — isolated dir to avoid host libc conflicts
+    _cuda_stub_dir="$FLOX_ENV_CACHE/cuda-driver-stub"
+    if [[ ! -d "$_cuda_stub_dir" ]]; then
+      mkdir -p "$_cuda_stub_dir"
+      for _lib in libcuda.so.1 libnvidia-ml.so.1; do
+        for _dir in /usr/lib/x86_64-linux-gnu /usr/lib64; do
+          if [[ -e "$_dir/$_lib" ]]; then
+            ln -sf "$_dir/$_lib" "$_cuda_stub_dir/$_lib"
+            break
+          fi
+        done
+      done
+    fi
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$_cuda_stub_dir"
   fi
 
   triton-setup-models
@@ -94,7 +109,7 @@ on-activate = '''
   if [[ -f "$_openai_main" ]]; then
     _openai_reqs="$_ts_prefix/python/openai/requirements.txt"
     _openai_deps="$FLOX_ENV_CACHE/openai-deps"
-    _openai_sentinel="$_openai_deps/.installed-v1"
+    _openai_sentinel="$_openai_deps/.installed-v2"
     if [[ ! -f "$_openai_sentinel" ]]; then
       echo "Installing OpenAI frontend dependencies..."
       mkdir -p "$_openai_deps"
@@ -103,6 +118,9 @@ on-activate = '''
         "$_ts_prefix"/python/tritonserver-*.whl \
         "$_ts_prefix"/python/tritonfrontend-*.whl \
         2>&1 | tail -1
+      # Remove pip numpy — it shadows the Nix-provided one which has
+      # proper RPATH for libstdc++ (pip manylinux wheel does not).
+      rm -rf "$_openai_deps"/numpy{,.libs,*.dist-info}
       touch "$_openai_sentinel"
     fi
     export PYTHONPATH="${_openai_deps}${PYTHONPATH:+:$PYTHONPATH}"

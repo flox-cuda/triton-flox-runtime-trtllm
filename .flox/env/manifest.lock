@@ -40,8 +40,7 @@
         ]
       },
       "triton-model-qwen2-5-05b-trtllm": {
-        "pkg-path": "flox/triton-model-qwen2-5-05b-trtllm",
-        "pkg-group": "triton-model-qwen2-5-05b-trtllm",
+        "store-path": "/nix/store/l04v6wjzf8v9wcr0vsm7054msg7bmrhp-triton-model-qwen2-5-05b-trtllm-0.1.0+e1f5d81",
         "systems": [
           "x86_64-linux"
         ]
@@ -61,12 +60,11 @@
         ]
       },
       "triton-server": {
-        "pkg-path": "flox/triton-server",
-        "pkg-group": "triton-server",
-        "version": "2.66.0+c279dda",
+        "store-path": "/nix/store/3qr3wi58c70qkrcb6a7j1rr5zhllr19l-triton-server-2.66.0+e572f56",
         "systems": [
           "x86_64-linux"
-        ]
+        ],
+        "priority": 3
       },
       "triton-tensorrt-backend": {
         "pkg-path": "flox/triton-tensorrt-backend",
@@ -90,6 +88,9 @@
           "x86_64-linux"
         ]
       },
+      "uv": {
+        "pkg-path": "uv"
+      },
       "vllm": {
         "pkg-path": "flox-cuda/python3Packages.vllm",
         "pkg-group": "vllm",
@@ -98,8 +99,12 @@
         ]
       }
     },
+    "vars": {
+      "TRITON_MODEL": "qwen2_5_05b_trtllm",
+      "TRITON_OPENAI_FRONTEND": "true"
+    },
     "hook": {
-      "on-activate": "  triton-setup-backends\n  export TRITON_BACKEND_DIR=\"$FLOX_ENV_CACHE/backends\"\n\n  # TRT-LLM MPI: set OPAL_PREFIX so MPI_Init_thread finds help files + MCA modules\n  if [[ -d \"$FLOX_ENV_CACHE/backends/tensorrtllm\" ]]; then\n    _trtllm_root=\"$(readlink -f \"$FLOX_ENV_CACHE/backends/tensorrtllm\")\"\n    _trtllm_root=\"${_trtllm_root%/backends/tensorrtllm}\"\n    if [[ -d \"$_trtllm_root/hpcx/ompi\" ]]; then\n      export OPAL_PREFIX=\"$_trtllm_root/hpcx/ompi\"\n      export LD_LIBRARY_PATH=\"${_trtllm_root}/hpcx/ompi/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n    fi\n  fi\n\n  triton-setup-models\n  export TRITON_MODEL_REPOSITORY=\"${TRITON_MODEL_REPOSITORY:-$FLOX_ENV_CACHE/models}\"\n"
+      "on-activate": "  triton-setup-backends\n  export TRITON_BACKEND_DIR=\"$FLOX_ENV_CACHE/backends\"\n\n  # TRT-LLM: backend libs + MPI (OPAL_PREFIX for MPI_Init_thread help/MCA modules)\n  if [[ -d \"$FLOX_ENV_CACHE/backends/tensorrtllm\" ]]; then\n    _trtllm_root=\"$(readlink -f \"$FLOX_ENV_CACHE/backends/tensorrtllm\")\"\n    _trtllm_root=\"${_trtllm_root%/backends/tensorrtllm}\"\n    export LD_LIBRARY_PATH=\"${_trtllm_root}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\n    if [[ -d \"$_trtllm_root/hpcx/ompi\" ]]; then\n      export OPAL_PREFIX=\"$_trtllm_root/hpcx/ompi\"\n      export LD_LIBRARY_PATH=\"${_trtllm_root}/hpcx/ompi/lib:$LD_LIBRARY_PATH\"\n    fi\n    # CUDA driver stub — isolated dir to avoid host libc conflicts\n    _cuda_stub_dir=\"$FLOX_ENV_CACHE/cuda-driver-stub\"\n    if [[ ! -d \"$_cuda_stub_dir\" ]]; then\n      mkdir -p \"$_cuda_stub_dir\"\n      for _lib in libcuda.so.1 libnvidia-ml.so.1; do\n        for _dir in /usr/lib/x86_64-linux-gnu /usr/lib64; do\n          if [[ -e \"$_dir/$_lib\" ]]; then\n            ln -sf \"$_dir/$_lib\" \"$_cuda_stub_dir/$_lib\"\n            break\n          fi\n        done\n      done\n    fi\n    export LD_LIBRARY_PATH=\"$LD_LIBRARY_PATH:$_cuda_stub_dir\"\n  fi\n\n  triton-setup-models\n  export TRITON_MODEL_REPOSITORY=\"${TRITON_MODEL_REPOSITORY:-$FLOX_ENV_CACHE/models}\"\n\n  # OpenAI frontend dependencies\n  _ts_prefix=\"$(dirname \"$(command -v tritonserver)\")/..\"\n  _openai_main=\"$_ts_prefix/python/openai/main.py\"\n  if [[ -f \"$_openai_main\" ]]; then\n    _openai_reqs=\"$_ts_prefix/python/openai/requirements.txt\"\n    _openai_deps=\"$FLOX_ENV_CACHE/openai-deps\"\n    _openai_sentinel=\"$_openai_deps/.installed-v2\"\n    if [[ ! -f \"$_openai_sentinel\" ]]; then\n      echo \"Installing OpenAI frontend dependencies...\"\n      mkdir -p \"$_openai_deps\"\n      uv pip install --target \"$_openai_deps\" \\\n        -r \"$_openai_reqs\" \\\n        \"$_ts_prefix\"/python/tritonserver-*.whl \\\n        \"$_ts_prefix\"/python/tritonfrontend-*.whl \\\n        2>&1 | tail -1\n      # Remove pip numpy — it shadows the Nix-provided one which has\n      # proper RPATH for libstdc++ (pip manylinux wheel does not).\n      rm -rf \"$_openai_deps\"/numpy{,.libs,*.dist-info}\n      touch \"$_openai_sentinel\"\n    fi\n    export PYTHONPATH=\"${_openai_deps}${PYTHONPATH:+:$PYTHONPATH}\"\n  fi\n"
     },
     "profile": {},
     "options": {},
@@ -110,6 +115,18 @@
     }
   },
   "packages": [
+    {
+      "install_id": "triton-model-qwen2-5-05b-trtllm",
+      "store_path": "/nix/store/l04v6wjzf8v9wcr0vsm7054msg7bmrhp-triton-model-qwen2-5-05b-trtllm-0.1.0+e1f5d81",
+      "system": "x86_64-linux",
+      "priority": 5
+    },
+    {
+      "install_id": "triton-server",
+      "store_path": "/nix/store/3qr3wi58c70qkrcb6a7j1rr5zhllr19l-triton-server-2.66.0+e572f56",
+      "system": "x86_64-linux",
+      "priority": 3
+    },
     {
       "attr_path": "python3Packages.numpy",
       "broken": false,
@@ -488,7 +505,7 @@
       "rev": "c3da7fb40018681c0918a1d4c08ed248a919e5df",
       "rev_count": 24,
       "rev_date": "2026-03-12T00:06:21Z",
-      "scrape_date": "2026-03-13T15:45:42.062152797Z",
+      "scrape_date": "2026-03-13T23:46:27.927808066Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -519,7 +536,7 @@
       "rev": "c3da7fb40018681c0918a1d4c08ed248a919e5df",
       "rev_count": 24,
       "rev_date": "2026-03-12T00:06:21Z",
-      "scrape_date": "2026-03-13T15:45:42.062153668Z",
+      "scrape_date": "2026-03-13T23:46:27.927808947Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -550,7 +567,7 @@
       "rev": "c3da7fb40018681c0918a1d4c08ed248a919e5df",
       "rev_count": 24,
       "rev_date": "2026-03-12T00:06:21Z",
-      "scrape_date": "2026-03-13T15:45:42.062155080Z",
+      "scrape_date": "2026-03-13T23:46:27.927809588Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -605,6 +622,130 @@
         "mount": "/nix/store/8c2ly0rd4bh2cqbq5rainxchvcn56pq0-util-linux-2.41.3-mount",
         "out": "/nix/store/vcwnqdg2aa8gyvizl7s4q12j6hy19172-util-linux-2.41.3",
         "swap": "/nix/store/7kfa6vaj8f0kihbx6fqsam327yr5zpcj-util-linux-2.41.3-swap"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/x6j4192kdag9zpv7b13dsl6d9dl4mq0z-uv-0.10.4.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
+      "name": "uv-0.10.4",
+      "pname": "uv",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T04:48:25.875225Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "0.10.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/iz3bcbs2pa00l0awp05pfb0x8dlx1ljm-uv-0.10.4"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/ylqxvsfnibr8lmrk4q7m63c3ks4vpy6g-uv-0.10.4.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
+      "name": "uv-0.10.4",
+      "pname": "uv",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T05:27:08.194782Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "0.10.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/d3agwkb703z1j2iccs5p0hyf8nva03fy-uv-0.10.4"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/gxpzi6mcjlg7d52v60znp8ayqcqi9dg0-uv-0.10.4.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
+      "name": "uv-0.10.4",
+      "pname": "uv",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T06:11:33.134995Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "0.10.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/vrznmkha6ws0574jhhnxf4czsy3igs8s-uv-0.10.4"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/p9g4bsrbhvchmm3adzdaz8bhcm1n80hd-uv-0.10.4.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=2fc6539b481e1d2569f25f8799236694180c0993",
+      "name": "uv-0.10.4",
+      "pname": "uv",
+      "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
+      "rev_count": 953160,
+      "rev_date": "2026-02-23T12:05:20Z",
+      "scrape_date": "2026-02-25T07:03:34.022261Z",
+      "stabilities": [
+        "unstable",
+        "staging",
+        "stable"
+      ],
+      "unfree": false,
+      "version": "0.10.4",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/kwxpv3m0wyyzgpqvm805vlkh2as4asy6-uv-0.10.4"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -739,35 +880,6 @@
       "priority": 5
     },
     {
-      "attr_path": "triton-server",
-      "broken": false,
-      "derivation": "/nix/store/7mylfddvabcz8k5qa7kznn4xhzigs31c-triton-server-2.66.0+c279dda.drv",
-      "description": "NVIDIA Triton Inference Server",
-      "install_id": "triton-server",
-      "license": "BSD-3-Clause",
-      "locked_url": "git@github.com:barstoolbluz/build-triton-server.git?rev=276c72777474902d3398f6f8436add365c0bbef1",
-      "name": "triton-server-2.66.0+c279dda",
-      "pname": "triton-server",
-      "rev": "276c72777474902d3398f6f8436add365c0bbef1",
-      "rev_count": 34,
-      "rev_date": "2026-03-13T15:10:12Z",
-      "scrape_date": "2026-03-13T15:46:22.891148765Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "2.66.0+c279dda",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/p7yl6mn4njkr1ax5b18f1wxckhjsd71x-triton-server-2.66.0+c279dda"
-      },
-      "system": "x86_64-linux",
-      "group": "triton-server",
-      "priority": 5
-    },
-    {
       "attr_path": "triton-tensorrtllm-backend",
       "broken": false,
       "derivation": "/nix/store/q8v7r0hirf0l3s70s7bplm19h7h41r36-triton-tensorrtllm-backend-2.66.0+c279dda.drv",
@@ -824,35 +936,6 @@
       },
       "system": "x86_64-linux",
       "group": "vllm",
-      "priority": 5
-    },
-    {
-      "attr_path": "triton-model-qwen2-5-05b-trtllm",
-      "broken": false,
-      "derivation": "/nix/store/jhbzpg5wg90fzg8m65ssfb2dgm685ya9-triton-model-qwen2-5-05b-trtllm-0.1.0+1eb2ab5.drv",
-      "description": "Qwen2.5-0.5B TRT-LLM model for NVIDIA Triton Inference Server",
-      "install_id": "triton-model-qwen2-5-05b-trtllm",
-      "license": "Apache-2.0",
-      "locked_url": "git@github.com:barstoolbluz/build-trtllm-models.git?rev=a75215cd1e99cac5d28b8876150a46ec5a6e144c",
-      "name": "triton-model-qwen2-5-05b-trtllm-0.1.0+1eb2ab5",
-      "pname": "triton-model-qwen2-5-05b-trtllm",
-      "rev": "a75215cd1e99cac5d28b8876150a46ec5a6e144c",
-      "rev_count": 4,
-      "rev_date": "2026-03-13T16:33:00Z",
-      "scrape_date": "2026-03-13T21:17:09.766988714Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.1.0+1eb2ab5",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/b2xvkm0r2yga58hmmj9mdd6li6yx4y1h-triton-model-qwen2-5-05b-trtllm-0.1.0+1eb2ab5"
-      },
-      "system": "x86_64-linux",
-      "group": "triton-model-qwen2-5-05b-trtllm",
       "priority": 5
     }
   ]
