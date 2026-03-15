@@ -86,12 +86,17 @@ chat_stream() {
       \"messages\": [{\"role\": \"user\", \"content\": ${escaped}}],
       \"max_tokens\": ${max_tokens},
       \"stream\": true
-    }" | while IFS= read -r line; do
-      [[ "$line" =~ ^data:\ \{ ]] || continue
-      chunk="${line#data: }"
-      printf '%s' "$chunk" | python3 -c 'import json,sys; d=json.load(sys.stdin)["choices"][0]["delta"]; print(d.get("content",""), end="")'
-    done
-  echo
+    }" | python3 -c '
+import sys, json
+for line in sys.stdin:
+    line = line.strip()
+    if not line.startswith("data: {"):
+        continue
+    chunk = json.loads(line[6:])
+    content = chunk["choices"][0]["delta"].get("content", "")
+    print(content, end="", flush=True)
+print()
+'
 }
 
 # --- Preflight ---

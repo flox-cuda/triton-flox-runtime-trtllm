@@ -64,14 +64,17 @@ send_chat() {
         \"messages\": [{\"role\": \"user\", \"content\": ${user_msg}}],
         \"max_tokens\": ${max_tokens},
         \"stream\": true
-      }" | while IFS= read -r line; do
-        # Skip empty lines and [DONE]
-        [[ "$line" =~ ^data:\ \{  ]] || continue
-        chunk="${line#data: }"
-        delta=$(printf '%s' "$chunk" | python3 -c 'import json,sys; d=json.load(sys.stdin)["choices"][0]["delta"]; print(d.get("content",""), end="")')
-        printf '%s' "$delta"
-      done
-    echo
+      }" | python3 -c '
+import sys, json
+for line in sys.stdin:
+    line = line.strip()
+    if not line.startswith("data: {"):
+        continue
+    chunk = json.loads(line[6:])
+    content = chunk["choices"][0]["delta"].get("content", "")
+    print(content, end="", flush=True)
+print()
+'
   else
     curl -s "${base}/chat/completions" \
       -H "Content-Type: application/json" \
