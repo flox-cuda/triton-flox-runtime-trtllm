@@ -1258,9 +1258,7 @@ triton-runtime/
     tensorrt_identity/          # TensorRT identity test model
       config.pbtxt
       1/
-    qwen2_5_05b_trtllm/        # Qwen2.5-0.5B TRT-LLM (config template, engine via model package)
-      config.pbtxt.template
-      1/
+        model.plan
   tests/                        # Bats test suite
   README.md
 ```

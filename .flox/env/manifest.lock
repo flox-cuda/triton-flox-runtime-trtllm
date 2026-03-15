@@ -40,13 +40,17 @@
         ]
       },
       "triton-model-phi4-mini-trtllm": {
-        "store-path": "/nix/store/0ryy8l1779irvmmx37f0h9d2hn3839i4-triton-model-phi4-mini-trtllm-0.1.0+199a7d1",
+        "pkg-path": "flox/triton-model-phi4-mini-trtllm",
+        "pkg-group": "triton-model-phi4-mini-trtllm",
+        "version": "0.1.0+199a7d1",
         "systems": [
           "x86_64-linux"
         ]
       },
       "triton-model-qwen2-5-05b-trtllm": {
-        "store-path": "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1",
+        "pkg-path": "flox/triton-model-qwen2-5-05b-trtllm",
+        "pkg-group": "triton-model-qwen2-5-05b-trtllm",
+        "version": "0.1.0+199a7d1",
         "systems": [
           "x86_64-linux"
         ]
@@ -66,11 +70,12 @@
         ]
       },
       "triton-server": {
-        "store-path": "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556",
+        "pkg-path": "flox/triton-server",
+        "pkg-group": "triton-server",
+        "version": "2.66.0+b0b0556",
         "systems": [
           "x86_64-linux"
-        ],
-        "priority": 3
+        ]
       },
       "triton-tensorrt-backend": {
         "pkg-path": "flox/triton-tensorrt-backend",
@@ -123,24 +128,6 @@
   },
   "packages": [
     {
-      "install_id": "triton-model-phi4-mini-trtllm",
-      "store_path": "/nix/store/0ryy8l1779irvmmx37f0h9d2hn3839i4-triton-model-phi4-mini-trtllm-0.1.0+199a7d1",
-      "system": "x86_64-linux",
-      "priority": 5
-    },
-    {
-      "install_id": "triton-model-qwen2-5-05b-trtllm",
-      "store_path": "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1",
-      "system": "x86_64-linux",
-      "priority": 5
-    },
-    {
-      "install_id": "triton-server",
-      "store_path": "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556",
-      "system": "x86_64-linux",
-      "priority": 3
-    },
-    {
       "attr_path": "python3Packages.numpy",
       "broken": false,
       "derivation": "/nix/store/bmvsr86dxr10flc0akzsyyq6rwkii9xs-python3.13-numpy-2.4.2.drv",
@@ -153,7 +140,7 @@
       "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
       "rev_count": 953160,
       "rev_date": "2026-02-23T12:05:20Z",
-      "scrape_date": "2026-03-13T14:55:41.700395143Z",
+      "scrape_date": "2026-03-15T00:17:45.291202245Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -185,7 +172,7 @@
       "rev": "2fc6539b481e1d2569f25f8799236694180c0993",
       "rev_count": 953160,
       "rev_date": "2026-02-23T12:05:20Z",
-      "scrape_date": "2026-03-13T14:55:41.700400431Z",
+      "scrape_date": "2026-03-15T00:17:45.291208715Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -518,7 +505,7 @@
       "rev": "c3da7fb40018681c0918a1d4c08ed248a919e5df",
       "rev_count": 24,
       "rev_date": "2026-03-12T00:06:21Z",
-      "scrape_date": "2026-03-13T23:46:27.927808066Z",
+      "scrape_date": "2026-03-15T00:18:44.238695345Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -549,7 +536,7 @@
       "rev": "c3da7fb40018681c0918a1d4c08ed248a919e5df",
       "rev_count": 24,
       "rev_date": "2026-03-12T00:06:21Z",
-      "scrape_date": "2026-03-13T23:46:27.927808947Z",
+      "scrape_date": "2026-03-15T00:18:44.238696296Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -580,7 +567,7 @@
       "rev": "c3da7fb40018681c0918a1d4c08ed248a919e5df",
       "rev_count": 24,
       "rev_date": "2026-03-12T00:06:21Z",
-      "scrape_date": "2026-03-13T23:46:27.927809588Z",
+      "scrape_date": "2026-03-15T00:18:44.238697779Z",
       "stabilities": [
         "unstable",
         "staging",
@@ -777,7 +764,7 @@
       "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
       "rev_count": 958232,
       "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-13T14:55:41.700447862Z",
+      "scrape_date": "2026-03-15T00:17:45.291266111Z",
       "stabilities": [
         "unstable",
         "staging"
@@ -811,7 +798,7 @@
       "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
       "rev_count": 958232,
       "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-13T14:55:41.700448834Z",
+      "scrape_date": "2026-03-15T00:17:45.291267483Z",
       "stabilities": [
         "unstable",
         "staging"
@@ -835,19 +822,20 @@
     {
       "attr_path": "python3Packages.transformers",
       "broken": false,
-      "derivation": "/nix/store/m74npsf6jk9yrnj9jwrg7j419rkh9bdz-python3.13-transformers-5.3.0.drv",
+      "derivation": "/nix/store/5c8kxn5rn9x3zcysc3z16pv2dmmrfzil-python3.13-transformers-5.3.0.drv",
       "description": "Natural Language Processing for TensorFlow 2.0 and PyTorch",
       "install_id": "transformers",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=aca4d95fce4914b3892661bcb80b8087293536c6",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=62dc67aa6a52b4364dd75994ec00b51fbf474e50",
       "name": "python3.13-transformers-5.3.0",
       "pname": "transformers",
-      "rev": "aca4d95fce4914b3892661bcb80b8087293536c6",
-      "rev_count": 958961,
-      "rev_date": "2026-03-06T04:56:59Z",
-      "scrape_date": "2026-03-13T14:55:41.700454342Z",
+      "rev": "62dc67aa6a52b4364dd75994ec00b51fbf474e50",
+      "rev_count": 961274,
+      "rev_date": "2026-03-10T06:05:22Z",
+      "scrape_date": "2026-03-15T00:17:45.291271259Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging"
       ],
       "unfree": false,
       "version": "5.3.0",
@@ -855,8 +843,8 @@
         "out"
       ],
       "outputs": {
-        "dist": "/nix/store/v1wdihiikialr04zqq8lfh2razi9fmwh-python3.13-transformers-5.3.0-dist",
-        "out": "/nix/store/40y8plzk3kn94wgpw9ibnig499pjsqhb-python3.13-transformers-5.3.0"
+        "dist": "/nix/store/f1p99nlcrq2bj3izi0v7cawbxij8c3mp-python3.13-transformers-5.3.0-dist",
+        "out": "/nix/store/0vk3icrzk371g11b4av1vcxglpc2vsqf-python3.13-transformers-5.3.0"
       },
       "system": "aarch64-linux",
       "group": "transformers",
@@ -865,19 +853,20 @@
     {
       "attr_path": "python3Packages.transformers",
       "broken": false,
-      "derivation": "/nix/store/32abrsi8s20ma66hi1q92inihv6192cz-python3.13-transformers-5.3.0.drv",
+      "derivation": "/nix/store/ql7d37jp7wj83rx04y0b89bgfszdpqh8-python3.13-transformers-5.3.0.drv",
       "description": "Natural Language Processing for TensorFlow 2.0 and PyTorch",
       "install_id": "transformers",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=aca4d95fce4914b3892661bcb80b8087293536c6",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=62dc67aa6a52b4364dd75994ec00b51fbf474e50",
       "name": "python3.13-transformers-5.3.0",
       "pname": "transformers",
-      "rev": "aca4d95fce4914b3892661bcb80b8087293536c6",
-      "rev_count": 958961,
-      "rev_date": "2026-03-06T04:56:59Z",
-      "scrape_date": "2026-03-13T14:55:41.700455033Z",
+      "rev": "62dc67aa6a52b4364dd75994ec00b51fbf474e50",
+      "rev_count": 961274,
+      "rev_date": "2026-03-10T06:05:22Z",
+      "scrape_date": "2026-03-15T00:17:45.291272290Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging"
       ],
       "unfree": false,
       "version": "5.3.0",
@@ -885,11 +874,101 @@
         "out"
       ],
       "outputs": {
-        "dist": "/nix/store/7fcc0hywnxgffvs6p0inmhpgdsxc1p3x-python3.13-transformers-5.3.0-dist",
-        "out": "/nix/store/my5xwx8w7fmzqdqy36hdisb8cs2c9sk1-python3.13-transformers-5.3.0"
+        "dist": "/nix/store/fyh83lf84wyizx2gcwplcbkmshs8axpj-python3.13-transformers-5.3.0-dist",
+        "out": "/nix/store/clq874zhyrxaziwpfpzy9wp4njb1wc0l-python3.13-transformers-5.3.0"
       },
       "system": "x86_64-linux",
       "group": "transformers",
+      "priority": 5
+    },
+    {
+      "attr_path": "triton-model-phi4-mini-trtllm",
+      "broken": false,
+      "derivation": "/nix/store/0n1nvvbarf1ldchkq020vaja1rzagp46-triton-model-phi4-mini-trtllm-0.1.0+199a7d1.drv",
+      "description": "Phi-4-mini-instruct INT4 AWQ TRT-LLM model for NVIDIA Triton Inference Server",
+      "install_id": "triton-model-phi4-mini-trtllm",
+      "license": "MIT",
+      "locked_url": "git@github.com:barstoolbluz/build-trtllm-models.git?rev=f702a0df1cc33fa99025431d44a14552815f2317",
+      "name": "triton-model-phi4-mini-trtllm-0.1.0+199a7d1",
+      "pname": "triton-model-phi4-mini-trtllm",
+      "rev": "f702a0df1cc33fa99025431d44a14552815f2317",
+      "rev_count": 20,
+      "rev_date": "2026-03-14T19:50:17Z",
+      "scrape_date": "2026-03-15T00:17:45.291274684Z",
+      "stabilities": [
+        "unstable",
+        "staging"
+      ],
+      "unfree": false,
+      "version": "0.1.0+199a7d1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/0ryy8l1779irvmmx37f0h9d2hn3839i4-triton-model-phi4-mini-trtllm-0.1.0+199a7d1"
+      },
+      "system": "x86_64-linux",
+      "group": "triton-model-phi4-mini-trtllm",
+      "priority": 5
+    },
+    {
+      "attr_path": "triton-model-qwen2-5-05b-trtllm",
+      "broken": false,
+      "derivation": "/nix/store/5fny5zqgmfcnqgyk4ra4jl1gr3n0sgci-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1.drv",
+      "description": "Qwen2.5-0.5B TRT-LLM model for NVIDIA Triton Inference Server",
+      "install_id": "triton-model-qwen2-5-05b-trtllm",
+      "license": "Apache-2.0",
+      "locked_url": "git@github.com:barstoolbluz/build-trtllm-models.git?rev=f702a0df1cc33fa99025431d44a14552815f2317",
+      "name": "triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1",
+      "pname": "triton-model-qwen2-5-05b-trtllm",
+      "rev": "f702a0df1cc33fa99025431d44a14552815f2317",
+      "rev_count": 20,
+      "rev_date": "2026-03-14T19:50:17Z",
+      "scrape_date": "2026-03-15T00:17:45.291277298Z",
+      "stabilities": [
+        "unstable",
+        "staging"
+      ],
+      "unfree": false,
+      "version": "0.1.0+199a7d1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1"
+      },
+      "system": "x86_64-linux",
+      "group": "triton-model-qwen2-5-05b-trtllm",
+      "priority": 5
+    },
+    {
+      "attr_path": "triton-server",
+      "broken": false,
+      "derivation": "/nix/store/af31zv91ibrna29wxhlgl0wnkhjvpdj2-triton-server-2.66.0+b0b0556.drv",
+      "description": "NVIDIA Triton Inference Server",
+      "install_id": "triton-server",
+      "license": "BSD-3-Clause",
+      "locked_url": "git@github.com:barstoolbluz/build-triton-server.git?rev=6f259c9fa5f805d273eeaf5f2c418d4bf28fd611",
+      "name": "triton-server-2.66.0+b0b0556",
+      "pname": "triton-server",
+      "rev": "6f259c9fa5f805d273eeaf5f2c418d4bf28fd611",
+      "rev_count": 59,
+      "rev_date": "2026-03-14T23:48:03Z",
+      "scrape_date": "2026-03-15T00:23:39.368262628Z",
+      "stabilities": [
+        "unstable",
+        "staging"
+      ],
+      "unfree": false,
+      "version": "2.66.0+b0b0556",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556"
+      },
+      "system": "x86_64-linux",
+      "group": "triton-server",
       "priority": 5
     },
     {
@@ -905,9 +984,10 @@
       "rev": "276c72777474902d3398f6f8436add365c0bbef1",
       "rev_count": 34,
       "rev_date": "2026-03-13T15:10:12Z",
-      "scrape_date": "2026-03-13T21:14:22.020383979Z",
+      "scrape_date": "2026-03-15T00:17:45.291279381Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging"
       ],
       "unfree": false,
       "version": "2.66.0+c279dda",
@@ -934,9 +1014,10 @@
       "rev": "62dc67aa6a52b4364dd75994ec00b51fbf474e50",
       "rev_count": 961274,
       "rev_date": "2026-03-10T06:05:22Z",
-      "scrape_date": "2026-03-13T14:55:41.700456846Z",
+      "scrape_date": "2026-03-15T00:17:45.291283056Z",
       "stabilities": [
-        "unstable"
+        "unstable",
+        "staging"
       ],
       "unfree": false,
       "version": "0.16.0",

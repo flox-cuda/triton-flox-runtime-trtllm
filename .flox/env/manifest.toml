@@ -1,20 +1,16 @@
-## Flox Environment Manifest -----------------------------------------
-##
-##   _Everything_ you need to know about the _manifest_ is here:
-##
-##   https://flox.dev/docs/reference/command-reference/manifest.toml/
-##
-## -------------------------------------------------------------------
-# Flox manifest version managed by Flox CLI
 version = 1
 
 
-## Install Packages --------------------------------------------------
-##  $ flox install gum  <- puts a package in [install] section below
-##  $ flox search gum   <- search for a package
-##  $ flox show gum     <- show all versions of a package
-## -------------------------------------------------------------------
 [install]
+triton-server.pkg-path = "flox/triton-server"
+triton-server.version = "2.66.0+b0b0556"		## latest
+triton-server.systems = ["x86_64-linux"]
+triton-server.pkg-group = "triton-server"
+triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
+triton-tensorrtllm-backend.systems = ["x86_64-linux"]
+triton-tensorrtllm-backend.version = "2.66.0+c279dda"	## latest
+triton-tensorrtllm-backend.pkg-group = "triton-tensorrtllm"
+triton-tensorrtllm-backend.priority = 7
 triton-python-backend.pkg-path = "flox/triton-python-backend"
 triton-python-backend.systems = ["x86_64-linux"]
 triton-python-backend.priority = 4
@@ -24,6 +20,16 @@ triton-onnxruntime-backend.priority = 5
 triton-tensorrt-backend.pkg-path = "flox/triton-tensorrt-backend"
 triton-tensorrt-backend.systems = ["x86_64-linux"]
 triton-tensorrt-backend.priority = 6
+triton-model-qwen2-5-05b-trtllm.pkg-path = "flox/triton-model-qwen2-5-05b-trtllm"
+triton-model-qwen2-5-05b-trtllm.version = "0.1.0+199a7d1"	## latest
+triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
+triton-model-qwen2-5-05b-trtllm.pkg-group = "triton-model-qwen2-5-05b-trtllm"
+triton-model-phi4-mini-trtllm.pkg-path = "flox/triton-model-phi4-mini-trtllm"
+triton-model-phi4-mini-trtllm.version = "0.1.0+199a7d1"		## latest
+triton-model-phi4-mini-trtllm.systems = ["x86_64-linux"]
+triton-model-phi4-mini-trtllm.pkg-group = "triton-model-phi4-mini-trtllm"
+
+## other required deps
 shellcheck.pkg-path = "shellcheck"
 bats.pkg-path = "bats"
 numpy.pkg-path = "flox-cuda/python3Packages.numpy"
@@ -43,36 +49,15 @@ util-linux.systems = ["x86_64-linux"]
 iproute2.pkg-path = "iproute2"
 iproute2.systems = ["x86_64-linux"]
 uv.pkg-path = "uv"
-triton-server.store-path = "/nix/store/grx3m8afpa481dblgsxgdglikxj2g4c0-triton-server-2.66.0+b0b0556"
-triton-server.systems = ["x86_64-linux"]
-triton-server.priority = 3
-triton-tensorrtllm-backend.pkg-path = "flox/triton-tensorrtllm-backend"
-triton-tensorrtllm-backend.systems = ["x86_64-linux"]
-triton-tensorrtllm-backend.version = "2.66.0+c279dda"
-triton-tensorrtllm-backend.pkg-group = "triton-tensorrtllm"
-triton-tensorrtllm-backend.priority = 7
 
-## optional models for model serving demo
-triton-model-qwen2-5-05b-trtllm.store-path = "/nix/store/9y0hm72y8ald16dfp4m66hch5q5kb8cz-triton-model-qwen2-5-05b-trtllm-0.1.0+199a7d1"
-triton-model-qwen2-5-05b-trtllm.systems = ["x86_64-linux"]
-triton-model-phi4-mini-trtllm.store-path = "/nix/store/0ryy8l1779irvmmx37f0h9d2hn3839i4-triton-model-phi4-mini-trtllm-0.1.0+199a7d1"
-triton-model-phi4-mini-trtllm.systems = ["x86_64-linux"]
-
-
-## Environment Variables ---------------------------------------------
-##  ... available for use in the activated environment
-##      as well as [hook], [profile] scripts and [services] below.
-## -------------------------------------------------------------------
 [vars]
-TRITON_MODEL = "deepseek_r1_7b_trtllm"
+TRITON_MODEL = "phi4_mini_trtllm"
 TRITON_OPENAI_FRONTEND = "true"
-TRITON_LOCAL_MODELS = "/mnt/scratch/trtllm-models"
-# INTRO_MESSAGE = "It's gettin' Flox in here"
+# Uncomment to serve external TRT-LLM models (each subdir needs engine/ + tokenizer/).
+# Ensemble pipelines are synthesized automatically at activation time.
+# TRITON_LOCAL_MODELS = "/path/to/trtllm-models"
 
 
-## Activation Hook ---------------------------------------------------
-##  ... run by _bash_ shell when you run 'flox activate'.
-## -------------------------------------------------------------------
 [hook]
 on-activate = '''
   triton-setup-backends
@@ -154,56 +139,13 @@ COMPATEOF
 '''
 
 
-## Profile script ----------------------------------------------------
-## ... sourced by _your shell_ when you run 'flox activate'.
-## -------------------------------------------------------------------
 [profile]
-# common = '''
-#   gum style \
-#   --foreground 212 --border-foreground 212 --border double \
-#   --align center --width 50 --margin "1 2" --padding "2 4" \
-#     $INTRO_MESSAGE
-# '''
-## Shell-specific customizations such as setting aliases go here:
-# bash = ...
-# zsh  = ...
-# fish = ...
 
 
-## Services ---------------------------------------------------------
-##  $ flox services start             <- Starts all services
-##  $ flox services status            <- Status of running services
-##  $ flox activate --start-services  <- Activates & starts all
-## ------------------------------------------------------------------
 [services]
 tritonserver.command = "triton-resolve-model && triton-serve"
 
 
-## Include ----------------------------------------------------------
-## ... environments to create a composed environment
-## ------------------------------------------------------------------
-[include]
-# environments = [
-#     { dir = "../common" }
-# ]
-
-
-## Build and publish your own packages ------------------------------
-##  $ flox build
-##  $ flox publish
-## ------------------------------------------------------------------
-[build]
-# [build.myproject]
-# description = "The coolest project ever"
-# version = "0.0.1"
-# command = """
-#   mkdir -p $out/bin
-#   cargo build --release
-#   cp target/release/myproject $out/bin/myproject
-# """
-
-
-## Other Environment Options -----------------------------------------
 [options]
 # Systems that environment is compatible with
 # systems = [
