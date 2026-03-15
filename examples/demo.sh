@@ -117,7 +117,7 @@ banner "1. Basic Question Answering"
 prompt "What is the theory of relativity in simple terms?"
 echo
 pause
-chat_request "What is the theory of relativity in simple terms? Explain in 2-3 sentences." 128
+chat_request "What is the theory of relativity in simple terms? Explain in 2-3 sentences." 512
 pause 2
 
 # --- Demo 2: Streaming ---
@@ -128,7 +128,7 @@ echo
 prompt "Write a haiku about programming."
 echo
 pause
-chat_stream "Write a single haiku about programming. Output only the haiku, nothing else." 64
+chat_stream "Write a single haiku about programming. Output only the haiku, nothing else." 512
 pause 2
 
 # --- Demo 3: Reasoning ---
@@ -137,7 +137,7 @@ banner "3. Reasoning & Math"
 prompt "If a train travels 120 miles in 2 hours, what is its speed?"
 echo
 pause
-chat_request "If a train travels 120 miles in 2 hours, what is its average speed in mph? Show your work briefly." 96
+chat_request "If a train travels 120 miles in 2 hours, what is its average speed in mph? Show your work briefly." 512
 pause 2
 
 if ! $quick; then
@@ -148,7 +148,7 @@ banner "4. Code Generation"
 prompt "Write a Python function to check if a number is prime."
 echo
 pause
-chat_stream "Write a short Python function called is_prime(n) that returns True if n is prime. Include a brief docstring. Output only the code." 196
+chat_stream "Write a short Python function called is_prime(n) that returns True if n is prime. Include a brief docstring. Output only the code." 768
 pause 2
 
 # --- Demo 5: Creative writing ---
@@ -157,7 +157,7 @@ banner "5. Creative Writing (Streaming)"
 prompt "Tell me a very short story about a robot learning to paint."
 echo
 pause
-chat_stream "Write a very short story (3-4 sentences) about a robot that learns to paint. Be creative and vivid." 196
+chat_stream "Write a very short story (3-4 sentences) about a robot that learns to paint. Be creative and vivid." 768
 pause 2
 
 fi

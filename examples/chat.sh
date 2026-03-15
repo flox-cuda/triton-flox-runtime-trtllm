@@ -32,13 +32,13 @@
 # Environment:
 #   TRITON_OPENAI_BASE   API base URL   (default: http://localhost:9000/v1)
 #   TRITON_MODEL         Model name     (default: qwen2_5_05b_trtllm_ensemble)
-#   MAX_TOKENS           Max tokens     (default: 64)
+#   MAX_TOKENS           Max tokens     (default: 512)
 
 set -euo pipefail
 
 base="${TRITON_OPENAI_BASE:-http://localhost:9000/v1}"
 model="${TRITON_MODEL:-qwen2_5_05b_trtllm}_ensemble"
-max_tokens="${MAX_TOKENS:-64}"
+max_tokens="${MAX_TOKENS:-512}"
 stream=true
 
 # Parse flags
