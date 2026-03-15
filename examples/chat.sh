@@ -15,7 +15,7 @@
 #
 #   2. This script must be run from a second terminal, also inside the
 #      triton-runtime directory. You need to be in the Flox environment
-#      (for python3 and curl):
+#      (for python3):
 #
 #        flox activate
 #        ./examples/chat.sh
@@ -31,13 +31,13 @@
 #
 # Environment:
 #   TRITON_OPENAI_BASE   API base URL   (default: http://localhost:9000/v1)
-#   TRITON_MODEL         Model name     (default: qwen2_5_05b_trtllm_ensemble)
+#   TRITON_MODEL         Model name     (default: phi4_mini_trtllm_ensemble)
 #   MAX_TOKENS           Max tokens     (default: 512)
 
 set -euo pipefail
 
 base="${TRITON_OPENAI_BASE:-http://localhost:9000/v1}"
-model="${TRITON_MODEL:-qwen2_5_05b_trtllm}_ensemble"
+model="${TRITON_MODEL:-phi4_mini_trtllm}_ensemble"
 max_tokens="${MAX_TOKENS:-512}"
 stream=true
 
@@ -52,38 +52,31 @@ while [[ "${1:-}" == --* ]]; do
 done
 
 send_chat() {
-  local user_msg="$1"
-  # Escape for JSON
-  user_msg=$(printf '%s' "$user_msg" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()), end="")')
-
-  if [[ "$stream" == "true" ]]; then
-    curl -sN "${base}/chat/completions" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"model\": \"${model}\",
-        \"messages\": [{\"role\": \"user\", \"content\": ${user_msg}}],
-        \"max_tokens\": ${max_tokens},
-        \"stream\": true
-      }" | python3 -c '
-import sys, json
-for line in sys.stdin:
-    line = line.strip()
-    if not line.startswith("data: {"):
-        continue
-    chunk = json.loads(line[6:])
-    content = chunk["choices"][0]["delta"].get("content", "")
-    print(content, end="", flush=True)
-print()
-'
-  else
-    curl -s "${base}/chat/completions" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"model\": \"${model}\",
-        \"messages\": [{\"role\": \"user\", \"content\": ${user_msg}}],
-        \"max_tokens\": ${max_tokens}
-      }" | python3 -c 'import json,sys; print(json.load(sys.stdin)["choices"][0]["message"]["content"])'
-  fi
+  printf '%s' "$1" | python3 -c '
+import sys, json, urllib.request
+msg = sys.stdin.read()
+streaming = sys.argv[4] == "true"
+body = json.dumps({
+    "model": sys.argv[1],
+    "messages": [{"role": "user", "content": msg}],
+    "max_tokens": int(sys.argv[2]),
+    "stream": streaming
+}).encode()
+req = urllib.request.Request(sys.argv[3] + "/chat/completions",
+    data=body, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as r:
+    if streaming:
+        for raw in r:
+            line = raw.decode().strip()
+            if not line.startswith("data: {"):
+                continue
+            chunk = json.loads(line[6:])
+            content = chunk["choices"][0]["delta"].get("content", "")
+            print(content, end="", flush=True)
+        print()
+    else:
+        print(json.load(r)["choices"][0]["message"]["content"])
+' "$model" "$max_tokens" "$base" "$stream"
 }
 
 # Single prompt mode

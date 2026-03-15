@@ -16,7 +16,7 @@
 #
 #   2. This script must be run from a second terminal, also inside the
 #      triton-runtime directory. You need to be in the Flox environment
-#      (for python3 and curl):
+#      (for python3):
 #
 #        flox activate
 #        ./examples/demo.sh
@@ -56,47 +56,44 @@ ok()     { printf '%s✓ %s%s\n' "$green" "$1" "$reset"; }
 warn()   { printf '%s⚠ %s%s\n' "$yellow" "$1" "$reset"; }
 pause()  { if ! $quick; then sleep "${1:-1}"; fi; }
 
-json_escape() {
-  printf '%s' "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()), end="")'
-}
-
 chat_request() {
-  local user_msg="$1"
-  local max_tokens="${2:-128}"
-  local escaped
-  escaped=$(json_escape "$user_msg")
-  curl -s "${base}/chat/completions" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"model\": \"${model}\",
-      \"messages\": [{\"role\": \"user\", \"content\": ${escaped}}],
-      \"max_tokens\": ${max_tokens}
-    }" | python3 -c 'import json,sys; print(json.load(sys.stdin)["choices"][0]["message"]["content"])'
+  printf '%s' "$1" | python3 -c '
+import sys, json, urllib.request
+msg = sys.stdin.read()
+body = json.dumps({
+    "model": sys.argv[1],
+    "messages": [{"role": "user", "content": msg}],
+    "max_tokens": int(sys.argv[2])
+}).encode()
+req = urllib.request.Request(sys.argv[3] + "/chat/completions",
+    data=body, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as r:
+    print(json.load(r)["choices"][0]["message"]["content"])
+' "$model" "${2:-512}" "$base"
 }
 
 chat_stream() {
-  local user_msg="$1"
-  local max_tokens="${2:-128}"
-  local escaped
-  escaped=$(json_escape "$user_msg")
-  curl -sN "${base}/chat/completions" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"model\": \"${model}\",
-      \"messages\": [{\"role\": \"user\", \"content\": ${escaped}}],
-      \"max_tokens\": ${max_tokens},
-      \"stream\": true
-    }" | python3 -c '
-import sys, json
-for line in sys.stdin:
-    line = line.strip()
-    if not line.startswith("data: {"):
-        continue
-    chunk = json.loads(line[6:])
-    content = chunk["choices"][0]["delta"].get("content", "")
-    print(content, end="", flush=True)
+  printf '%s' "$1" | python3 -c '
+import sys, json, urllib.request
+msg = sys.stdin.read()
+body = json.dumps({
+    "model": sys.argv[1],
+    "messages": [{"role": "user", "content": msg}],
+    "max_tokens": int(sys.argv[2]),
+    "stream": True
+}).encode()
+req = urllib.request.Request(sys.argv[3] + "/chat/completions",
+    data=body, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req) as r:
+    for raw in r:
+        line = raw.decode().strip()
+        if not line.startswith("data: {"):
+            continue
+        chunk = json.loads(line[6:])
+        content = chunk["choices"][0]["delta"].get("content", "")
+        print(content, end="", flush=True)
 print()
-'
+' "$model" "${2:-512}" "$base"
 }
 
 # --- Preflight ---
