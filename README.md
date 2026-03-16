@@ -1,6 +1,6 @@
-# Triton Inference Server Runtime
+# Triton Inference Server TRT-LLM Runtime
 
-Production NVIDIA Triton Inference Server deployment as a Flox environment. Ships with five backends: **Python**, **ONNX Runtime**, **vLLM**, **TensorRT**, and **TensorRT-LLM**. GPU-accelerated multi-port serving (HTTP, gRPC, metrics).
+Production NVIDIA Triton Inference Server deployment as a Flox environment. Ships with five backends: **Python**, **ONNX Runtime**, **vLLM**, **TensorRT**, and **TensorRT-LLM**. GPU-accelerated multi-port serving (HTTP, gRPC, metrics). TensorRT-LLM is configured as default. This environment is a work-in-progress. The TensorRT-LLM backend and baked-in Phi-4-Mini-Instruct model currently _must_ be built from source locally.
 
 - **Triton Inference Server**: v2.66.0 (built from source via Nix)
 - **CUDA**: requires NVIDIA driver with CUDA support
